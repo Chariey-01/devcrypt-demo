@@ -1,0 +1,93 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+
+venv/
+env/
+ENV/
+.venv/
+
+# Flask
+
+instance/
+.flaskenv
+
+# Environment Variables
+
+.env
+
+# Database
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+
+*.log
+
+# VS Code
+
+.vscode/
+
+# JetBrains IDEs
+
+.idea/
+
+# macOS
+
+.DS_Store
+
+# Linux
+
+*~
+
+# Windows
+
+Thumbs.db
+Desktop.ini
+
+# Testing
+
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build Files
+
+build/
+dist/
+*.egg-info/
+
+# Cache
+
+.cache/
+
+# Temporary Files
+
+tmp/
+temp/
+
+# Node (if used for frontend tooling)
+
+node_modules/
+
+# Coverage Reports
+
+coverage/
+
+# SQLite database for DevCrypt
+
+database/sqlite.db
+
+# Flask session files
+
+flask_session/
+
+# Uploaded files
+
+uploads/
