@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}{{ vault.title }} — DevCrypt{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="vault-layout">
+
+  <!-- ── LEFT: progress sidebar ── -->
+  <aside class="vault-sidebar">
+    <p class="sidebar-label">// VAULTS</p>
+    {% for i in range(1, 7) %}
+    {% set vs = session.vault_states[i|string] %}
+    <div class="sidebar-vault {% if vs.completed %}done{% elif vs.unlocked %}active{% else %}locked{% endif %}
+                              {% if vault.id == i %}current{% endif %}">
+      <span class="sv-num">0{{ i }}</span>
+      <span class="sv-status">
+        {% if vs.completed %}✓{% elif vs.unlocked %}→{% else %}🔒{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+
+    <div class="sidebar-divider"></div>
+
+    <!-- Cipher word strip -->
+    <p class="sidebar-label">// CIPHER</p>
+    <div class="cipher-strip">
+      {% for i in range(1, 7) %}
+      {% set cw = cipher_words[i|string] %}
+      <div class="cipher-tile {% if cw.revealed %}revealed{% endif %}" id="tile-{{ i }}">
+        {% if cw.revealed %}
+          <span class="tile-plain">{{ cw.plain }}</span>
+        {% else %}
+          <span class="tile-cipher">{{ cw.cipher }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <!-- ── MAIN: vault content ── -->
+  <main class="vault-main">
+
+    <!-- Header row -->
+    <div class="vault-header">
+      <div>
+        <p class="eyebrow">// VAULT 0{{ vault.id }} OF 6</p>
+        <h1 class="vault-title">{{ vault.title }}</h1>
+        <p class="vault-attack-summary">{{ vault.attack_summary }}</p>
+      </div>
+      <div class="timer-block" id="timer-block">
+        <span class="timer-label">TIME</span>
+        <span class="timer-display" id="timer-display">--:--</span>
+        <div class="timer-bar-wrap"><div class="timer-bar" id="timer-bar"></div></div>
+      </div>
+    </div>
+
+    <!-- ── STEP 1: File viewer ── -->
+    <section class="vault-step" id="step-file">
+      <div class="step-label">
+        <span class="step-num">01</span>
+        <span class="step-title">Read the incident file</span>
+      </div>
+      <div class="file-viewer">
+        <div class="file-tab">
+          <span class="file-icon">📄</span>
+          <span class="file-name">{{ vault.file.name }}</span>
+        </div>
+        <div class="file-content">
+          <pre><code class="language-{{ vault.file.language }}" id="vault-code">{{ vault.file.content }}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── STEP 2: MCQ ── -->
+    <section class="vault-step" id="step-mcq">
+      <div class="step-label">
+        <span class="step-num">02</span>
+        <span class="step-title">Identify the vulnerabilities</span>
+      </div>
+
+      {% if state.mcq_done %}
+        <div class="mcq-done-banner">MCQ submitted — results below.</div>
+      {% endif %}
+
+      <form id="mcq-form">
+        {% for q in vault.mcq %}
+        <div class="question-block" id="qblock-{{ q.id }}">
+          <p class="question-text">{{ loop.index }}. {{ q.question }}</p>
+          <div class="options-grid">
+            {% for opt in q.options %}
+            <label class="option-label {% if state.mcq_done %}
+                {% set result = state.mcq_answers.get(q.id) %}
+                {% if result %}
+                  {% if opt[0] == result.correct_answer %}correct-opt
+                  {% elif opt[0] == request.form.get(q.id, '') and not result.correct %}wrong-opt{% endif %}
+                {% endif %}
+              {% endif %}">
+              <input
+                type="radio"
+                name="{{ q.id }}"
+                value="{{ opt[0] }}"
+                {% if state.mcq_done %}disabled{% endif %}
+              >
+              <span class="opt-text">{{ opt }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+
+        {% if not state.mcq_done %}
+        <button type="submit" class="btn-primary" id="mcq-submit">Submit answers</button>
+        {% endif %}
+      </form>
+
+      <div id="mcq-result" class="mcq-result hidden"></div>
+    </section>
+
+    <!-- ── STEP 3: Code challenge ── -->
+    <section class="vault-step" id="step-code">
+      <div class="step-label">
+        <span class="step-num">03</span>
+        <span class="step-title">Code the fix — unlock this vault</span>
+      </div>
+
+      <div class="challenge-prompt">
+        <pre class="prompt-text">{{ vault.coding_challenge.prompt }}</pre>
+      </div>
+
+      {% if state.completed %}
+        <div class="solved-banner">
+          ✓ Vault solved — <strong>{{ cipher_words[vault.id|string].plain }}</strong> revealed.
+          {% if vault.id < 6 %}
+            <a href="{{ url_for('vault', vault_id=vault.id + 1) }}" class="inline-link">Proceed to Vault 0{{ vault.id + 1 }} →</a>
+          {% else %}
+            <a href="{{ url_for('leaderboard') }}" class="inline-link">View final board →</a>
+          {% endif %}
+        </div>
+      {% else %}
+        <form id="code-form">
+          <div class="code-editor-wrap">
+            <div class="editor-toolbar">
+              <span class="editor-lang">{{ vault.file.language }}</span>
+              <button type="button" class="btn-ghost" id="clear-code">clear</button>
+            </div>
+            <textarea
+              id="code-input"
+              name="code"
+              class="code-textarea"
+              placeholder="# Write your solution here..."
+              spellcheck="false"
+              autocorrect="off"
+              autocapitalize="off"
+            ></textarea>
+          </div>
+          <div class="code-actions">
+            <button type="submit" class="btn-primary" id="code-submit">Submit fix →</button>
+            <span class="penalty-note">Wrong answer: −30 pts</span>
+          </div>
+        </form>
+        <div id="code-result" class="code-result hidden"></div>
+      {% endif %}
+    </section>
+
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<script>
+    hljs.highlightAll();
+
+    window.VAULT_ID = {{vault.id|tojson }};
+    window.VAULT_TIMER = {{ vault.timer|tojson }};
+    window.MCQ_DONE = {{ state.mcq_done|tojson }};
+    window.VAULT_COMPLETE = {{ state.completed|tojson }};
+</script>
+
+<script src="{{ url_for('static', filename='js/vault.js') }}"></script>
+{% endblock %}

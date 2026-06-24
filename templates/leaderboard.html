@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Board — DevCrypt{% endblock %}
+
+{% block content %}
+<section class="board-section">
+  <div class="board-header">
+    <p class="eyebrow">// INCIDENT RESPONSE BOARD</p>
+    <h1 class="board-title">{{ team }}</h1>
+    <p class="board-sub">{{ members | join(', ') }}</p>
+    <div class="board-score-big">
+      <span class="bsb-label">Total score</span>
+      <span class="bsb-value">{{ score }}</span>
+    </div>
+  </div>
+
+  {% if flag %}
+  <div class="flag-reveal">
+    <p class="flag-label">// CITY RESTORED — FLAG DECODED</p>
+    <div class="flag-display">{{ flag }}</div>
+    <p class="flag-sub">GhostRoute-7 has been identified. The blueprint is neutralised.</p>
+  </div>
+  {% endif %}
+
+  <div class="vault-board-grid">
+    {% for v in vaults %}
+    <div class="vb-card {% if v.completed %}vb-done{% else %}vb-pending{% endif %}">
+      <div class="vb-top">
+        <span class="vb-num">0{{ v.id }}</span>
+        <span class="vb-status">{{ '✓ Solved' if v.completed else '— Incomplete' }}</span>
+      </div>
+      <p class="vb-title">{{ v.title }}</p>
+      <div class="vb-tile">
+        {% if v.word %}
+          <span class="vbt-plain">{{ v.word }}</span>
+        {% else %}
+          <span class="vbt-cipher">{{ v.cipher }}</span>
+        {% endif %}
+      </div>
+      {% if v.time_used is not none %}
+      <p class="vb-time">{{ v.time_used }}s / {{ v.timer }}s</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="board-actions">
+    <a href="{{ url_for('vault', vault_id=1) }}" class="btn-ghost">Back to Vault 01</a>
+  </div>
+</section>
+{% endblock %}

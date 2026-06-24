@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DevCrypt{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="noise-overlay"></div>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-bracket">[</span>
+        <span class="logo-dc">DC</span>
+        <span class="logo-bracket">]</span>
+        <span class="logo-name">DevCrypt</span>
+      </div>
+
+      {% if session.get('team') %}
+      <nav class="header-nav">
+        <span class="team-badge">
+          <span class="team-dot"></span>{{ session.team }}
+        </span>
+        <span class="score-display">
+          <span class="score-label">PTS</span>
+          <span class="score-value" id="global-score">{{ session.get('score', 0) }}</span>
+        </span>
+        <a href="{{ url_for('leaderboard') }}" class="nav-link">board</a>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
