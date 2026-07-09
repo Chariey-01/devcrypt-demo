@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Booth Queue — DevCrypt{% endblock %}
+{% block page_id %}booth{% endblock %}
+{% block content %}
+<main class="shell booth">
+  <header class="topbar">
+    <span class="brand-mini">DevCrypt</span>
+    <span class="pill">{{ mission.title }}</span>
+    <a class="ghost-link" href="{{ url_for('booth.select_booth') }}">Switch booth</a>
+    <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <button class="ghost" type="submit">Logout</button>
+    </form>
+  </header>
+
+  <p class="hint-text">Only <strong>PASS</strong>, <strong>RETRY</strong>, <strong>HINT</strong>, and
+    <strong>MISSION OVERRIDE</strong> are available here. Read hint text aloud — don't freestyle.</p>
+
+  <section id="queue" class="queue"></section>
+</main>
+{% endblock %}

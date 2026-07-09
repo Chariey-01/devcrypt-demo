@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Select Booth — DevCrypt{% endblock %}
+{% block content %}
+<main class="shell booth-select">
+  <h1 class="brand-mini">DevCrypt</h1>
+  <h2>Which node are you running?</h2>
+  <form method="post" class="booth-grid">
+    {% for mission in missions %}
+    <button class="role-card" type="submit" name="mission_id" value="{{ mission.id }}">
+      <h3>{{ mission.title }}</h3>
+      <p>Booth {{ mission.booth_id }}</p>
+    </button>
+    {% endfor %}
+  </form>
+  <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+    <button class="ghost" type="submit">Logout</button>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Team Login — DevCrypt{% endblock %}
+{% block content %}
+<main class="shell auth-shell">
+  <h1 class="brand-mini">DevCrypt</h1>
+  <h2>Cyber Response Unit Login</h2>
+  <form method="post" class="auth-form">
+    <label for="name">Team name</label>
+    <input id="name" name="name" type="text" autocomplete="off" required autofocus>
+
+    <label for="key">Team key</label>
+    <input id="key" name="key" type="password" autocomplete="off" required>
+
+    <button type="submit">Deploy</button>
+  </form>
+  <p class="footnote"><a href="{{ url_for('home') }}">← Back</a></p>
+</main>
+{% endblock %}

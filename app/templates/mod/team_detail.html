@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ team.name }} — DevCrypt{% endblock %}
+{% block content %}
+<main class="shell mod">
+  <header class="topbar">
+    <span class="brand-mini">DevCrypt</span>
+    <span class="pill">{{ team.name }}</span>
+    <span class="pill">Score {{ team.score }}</span>
+    <span class="pill">Integrity {{ team.integrity }}%</span>
+    <a class="ghost-link" href="{{ url_for('mod.dashboard') }}">← Back to teams</a>
+  </header>
+
+  <section class="card">
+    <h2>Missions</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>Mission</th><th>Status</th><th>Score</th><th>Attempts</th><th>Hint</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for tm in team.team_missions|sort(attribute="mission.order_index") %}
+        <tr>
+          <td>{{ tm.mission.title }}</td>
+          <td><span class="badge badge-{{ tm.status }}">{{ tm.status }}</span></td>
+          <td>{{ tm.score }}</td>
+          <td>{{ tm.attempts }}</td>
+          <td>{{ "yes" if tm.hint_used else "no" }}</td>
+          <td>
+            {% if tm.status not in ("passed", "overridden") %}
+            <form method="post" action="{{ url_for('mod.override', team_mission_id=tm.id) }}" class="inline-form">
+              <button type="submit" class="danger">Override</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Event log</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>When</th><th>Actor role</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.logged_at.strftime("%H:%M:%S") }}</td>
+          <td>{{ log.actor_role }}</td>
+          <td>{{ log.action }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</main>
+{% endblock %}

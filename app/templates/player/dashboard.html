@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mission Control — DevCrypt{% endblock %}
+{% block page_id %}player{% endblock %}
+{% block content %}
+<main class="shell player">
+  <header class="topbar">
+    <span class="brand-mini">DevCrypt</span>
+    <span id="team-name" class="pill"></span>
+    <span id="team-score" class="pill"></span>
+    <span id="team-integrity" class="pill"></span>
+    <span id="team-hints" class="pill"></span>
+    <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <button class="ghost" type="submit">Logout</button>
+    </form>
+  </header>
+
+  <div id="broadcast-banner" class="broadcast hidden"></div>
+  <div id="event-banner" class="event-banner hidden"></div>
+
+  <section class="cryptogram-board" id="cryptogram-board"></section>
+
+  <section id="mission-panel" class="card"></section>
+
+  <section class="fragment-rail" id="fragment-rail"></section>
+
+  <div id="finished-panel" class="hidden"></div>
+</main>
+{% endblock %}

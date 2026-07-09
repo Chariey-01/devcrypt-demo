@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}DevCrypt — Breach the Metaverse{% endblock %}
+{% block content %}
+<main class="shell landing">
+  <p class="eyebrow">Moringa Metaverse — Incident Response</p>
+  <h1 class="brand">DevCrypt</h1>
+  <p class="tagline">Breach the Metaverse</p>
+
+  <div class="role-grid">
+    <a class="role-card" href="{{ url_for('auth.team_login') }}">
+      <h2>Cyber Response Unit</h2>
+      <p>Team login — enter your team name and key card.</p>
+    </a>
+    <a class="role-card" href="{{ url_for('auth.login') }}">
+      <h2>Staff Login</h2>
+      <p>Booth Agent, Security Officer, or Game Master.</p>
+    </a>
+  </div>
+
+  <p class="footnote"><a href="{{ url_for('leaderboard.leaderboard') }}">View live leaderboard →</a></p>
+</main>
+{% endblock %}
