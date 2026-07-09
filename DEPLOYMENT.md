@@ -37,11 +37,11 @@ Seeded accounts (see `seed.py`, and change every password before a real event):
 | Booth Agent | `agent1@devcrypt.local`, `agent2@devcrypt.local` | `changeme` |
 | Security Officer | `officer@devcrypt.local` | `changeme` |
 
-## 2. Production (Render / Railway + managed Postgres)
+## 2. Production (Render / Railway / Vercel + managed Postgres)
 
-Config already in the repo: `Procfile` (gunicorn entrypoint), `requirements-prod.txt`
-(adds `psycopg2-binary` on top of `requirements.txt`), `.env.example` (documents every
-required env var).
+Config already in the repo: `Procfile` (gunicorn entrypoint for Render/Railway),
+`pyproject.toml` (Vercel entrypoint), `requirements.txt` (includes `psycopg2-binary` for
+Postgres), `.env.example` (documents every required env var).
 
 ### Render
 
@@ -49,7 +49,7 @@ required env var).
 2. In the Render dashboard: **New → PostgreSQL** — create a database, copy its **Internal
    Connection String**.
 3. **New → Web Service** → connect the GitHub repo.
-   - Build command: `pip install -r requirements-prod.txt`
+   - Build command: `pip install -r requirements.txt`
    - Start command: `gunicorn -w 4 -b 0.0.0.0:$PORT "app:create_app()"`
    - Environment variables: `SECRET_KEY`, `EVENT_SALT` (generate both with
      `python3 -c "import secrets; print(secrets.token_hex(32))"`), `DATABASE_URL` (the
@@ -65,6 +65,32 @@ required env var).
 Same shape: **New Project → Deploy from GitHub repo**, add a **Postgres** plugin (Railway
 injects `DATABASE_URL` automatically), set `SECRET_KEY` and `EVENT_SALT` as project
 variables, and Railway will pick up the `Procfile` automatically.
+
+### Vercel
+
+Vercel runs Flask as a serverless function (`pyproject.toml`'s `[tool.vercel] entrypoint =
+"run:app"` points it at the `app` object in `run.py`). **This changes one thing that
+matters a lot for a live event: the filesystem is not persistent across invocations.**
+The default `sqlite:///devcrypt.db` will not reliably keep team scores/progress between
+requests on Vercel — different invocations can see different (or empty) databases. Do not
+run a real event on Vercel with SQLite.
+
+1. Provision Postgres somewhere external (Supabase, Neon, or Render/Railway's managed
+   Postgres all work) and copy its connection string.
+2. In the Vercel project's **Settings → Environment Variables**, set:
+   - `DATABASE_URL` — the Postgres connection string from step 1 (not SQLite).
+   - `SECRET_KEY` and `EVENT_SALT` — generate both with
+     `python3 -c "import secrets; print(secrets.token_hex(32))"`. These must stay **fixed**
+     across deploys — Vercel may spin up multiple function instances, and if `SECRET_KEY`
+     changes between them, players' session cookies (and therefore logins) break
+     unpredictably.
+3. Deploy. Vercel picks up `requirements.txt` (already includes `psycopg2-binary`) and the
+   `pyproject.toml` entrypoint automatically.
+4. Seed once against the same `DATABASE_URL`, from your own machine before the event:
+   `DATABASE_URL=<your Postgres URL> python3 seed.py`.
+5. For anything beyond what's here (custom routes, build settings), follow Vercel's own
+   Python runtime docs — this was written from the error message Vercel gave, not tested
+   against a live Vercel deploy.
 
 ### Supabase (Postgres only)
 
