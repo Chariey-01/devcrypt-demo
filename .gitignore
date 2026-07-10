@@ -16,6 +16,9 @@ instance/
 # Environment variables
 .env
 
+# Generated event credentials (plaintext secrets, never commit)
+credentials*.csv
+
 # Database
 *.db
 *.sqlite
