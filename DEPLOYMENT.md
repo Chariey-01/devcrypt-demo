@@ -37,6 +37,30 @@ Seeded accounts (see `seed.py`, and change every password before a real event):
 | Booth Agent | `agent1@devcrypt.local`, `agent2@devcrypt.local` | `changeme` |
 | Security Officer | `officer@devcrypt.local` | `changeme` |
 
+### Real event credentials
+
+The table above is demo-only — every team key is `TEAMNAME01` and every staff password is
+`changeme`, hardcoded in `seed.py`. For an actual event, generate real random credentials
+instead:
+
+```bash
+python3 seed.py                       # sets up missions/evidence — wipes everything first
+python3 generate_credentials.py \
+  --teams "Alpha Squad" "Bravo Squad" "Charlie Squad" \
+  --game-masters gm@devcrypt.local \
+  --booth-agents agent1@devcrypt.local agent2@devcrypt.local \
+  --security-officers officer@devcrypt.local \
+  --out credentials.csv
+```
+
+This writes cryptographically random team keys (`secrets`-module generated, ambiguous
+characters like `0`/`O` and `1`/`I`/`L` excluded so they're safe to read off a printed key
+card) and staff passwords to `credentials.csv` — print/distribute it, then delete the file.
+Only bcrypt hashes are stored in the database; a lost credential can't be recovered, only
+replaced by re-running the script for that team/account. It only touches `Team`/`User` rows —
+safe to re-run any time without disturbing missions (unlike `seed.py`, it never wipes data).
+`credentials*.csv` is gitignored — never commit it.
+
 ## 2. Production (Render / Railway / Vercel + managed Postgres)
 
 Config already in the repo: `Procfile` (gunicorn entrypoint for Render/Railway),
