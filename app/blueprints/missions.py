@@ -1,0 +1,254 @@
+from datetime import datetime, timedelta
+
+from flask import Blueprint, jsonify, render_template, request
+
+from ..decorators import current_team, team_required
+from ..extensions import db
+from ..models import Mission, TeamMCQAnswer, TeamMission
+from ..services.cipher_service import CipherService
+from ..services.event_service import EventService
+from ..services.mission_service import MissionService
+from ..services.scoring_service import ScoringService
+
+missions_bp = Blueprint("missions", __name__, url_prefix="/missions")
+
+cipher_service = CipherService()
+scoring_service = ScoringService()
+mission_service = MissionService(scoring=scoring_service, cipher=cipher_service)
+event_service = EventService()
+
+NARRATIVE = {
+    "mcq_correct": "CIPHER LETTER DECODED",
+    "mcq_wrong": "SIGNAL UNCLEAR — NODE STILL COMPROMISED",
+    "challenge_pass": "NODE SECURED. FRAGMENT ACQUIRED.",
+    "challenge_fail": "PATCH REJECTED — VULNERABILITY STILL ACTIVE.",
+    "challenge_queued": "SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.",
+    "flag_final": "METAVERSE CORE RESTORED.",
+    "cooldown": "NODE ON COOLDOWN.",
+    "clearance_required": "COMMAND CENTER LOCKED — TWO SECURITY CLEARANCE STAMPS REQUIRED.",
+}
+
+
+@missions_bp.route("/play")
+@team_required
+def play():
+    return render_template("player/dashboard.html")
+
+
+def _serialize_mcq(mcq, team_mission):
+    answered = None
+    if team_mission:
+        answered = next((a for a in team_mission.mcq_answers if a.mcq_id == mcq.id), None)
+    return {
+        "id": mcq.id,
+        "question_text": mcq.question_text,
+        "options": [{"id": o.id, "option_text": o.option_text} for o in mcq.options],
+        "answered": answered is not None,
+        "was_correct": answered.is_correct if answered else None,
+        "selected_option_id": answered.selected_option_id if answered else None,
+    }
+
+
+def _serialize_challenge(challenge, team_mission):
+    options = None
+    if challenge.type == "mcq" and challenge.steps:
+        options = [line.strip() for line in challenge.steps.splitlines() if line.strip()]
+    return {
+        "type": challenge.type,
+        "prompt": challenge.prompt,
+        "options": options,
+        "hint_text": challenge.hint_text if (team_mission and team_mission.hint_used) else None,
+    }
+
+
+@missions_bp.route("/status")
+@team_required
+def status():
+    team = current_team()
+    state = event_service.get_state()
+    missions = Mission.query.order_by(Mission.order_index).all()
+    mission, team_mission = mission_service.current_mission_for(team, missions)
+
+    payload = {
+        "event_status": state.status,
+        "broadcast": (
+            {"message": state.broadcast_message, "at": state.broadcast_at.isoformat()}
+            if state.broadcast_message
+            else None
+        ),
+        "team": {
+            "name": team.name,
+            "score": team.score,
+            "integrity": team.integrity,
+            "hints_used": team.hints_used,
+            "hints_remaining": max(0, 3 - team.hints_used),
+        },
+        "cryptogram": cipher_service.board_state(team, missions),
+        "fragments": [
+            {"mission_id": f.mission_id, "value": f.cipher_value} for f in team.fragments
+        ],
+        "finished": mission is None,
+        "mission": None,
+    }
+
+    if mission is not None:
+        team_mission = mission_service.get_or_create_team_mission(team, mission)
+        db.session.commit()
+
+        locked = mission.order_index == max(m.order_index for m in missions) and len(
+            team.clearance_stamps
+        ) < 2
+        remaining_penalty = None
+        if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
+            remaining_penalty = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
+
+        payload["mission"] = {
+            "id": mission.id,
+            "title": mission.title,
+            "narrative": mission.narrative,
+            "time_limit": mission.time_limit,
+            "started_at": team_mission.started_at.isoformat() if team_mission.started_at else None,
+            "status": team_mission.status,
+            "attempts": team_mission.attempts,
+            "penalty_remaining": remaining_penalty,
+            "locked": locked,
+            "evidence_files": [
+                {"label": e.label, "file_type": e.file_type, "content": e.content}
+                for e in mission.evidence_files
+            ],
+            "mcqs": [_serialize_mcq(m, team_mission) for m in mission.mcqs],
+            "mcqs_complete": len(team_mission.mcq_answers) >= len(mission.mcqs),
+            "challenge": _serialize_challenge(mission.challenge, team_mission)
+            if mission.challenge
+            else None,
+            "pending_review": bool(team_mission.submission_text),
+        }
+
+    return jsonify(payload)
+
+
+@missions_bp.route("/mcq/<int:mcq_id>/answer", methods=["POST"])
+@team_required
+def answer_mcq(mcq_id):
+    team = current_team()
+    state = event_service.get_state()
+    if state.status != "running":
+        return jsonify({"error": "Event is not currently running."}), 409
+
+    missions = Mission.query.order_by(Mission.order_index).all()
+    mission, _ = mission_service.current_mission_for(team, missions)
+    if mission is None:
+        return jsonify({"error": "No active mission."}), 400
+
+    mcq = next((m for m in mission.mcqs if m.id == mcq_id), None)
+    if mcq is None:
+        return jsonify({"error": "That question does not belong to your current mission."}), 404
+
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+
+    existing = TeamMCQAnswer.query.filter_by(team_mission_id=team_mission.id, mcq_id=mcq.id).first()
+    if existing:
+        return jsonify(
+            {
+                "correct": existing.is_correct,
+                "message": NARRATIVE["mcq_correct"] if existing.is_correct else NARRATIVE["mcq_wrong"],
+                "already_answered": True,
+            }
+        )
+
+    data = request.get_json(silent=True) or {}
+    raw_option_id = data.get("option_id", request.form.get("option_id"))
+    try:
+        option_id = int(raw_option_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "option_id is required."}), 400
+    option = next((o for o in mcq.options if o.id == option_id), None)
+    if option is None:
+        return jsonify({"error": "Invalid option."}), 400
+
+    answer = TeamMCQAnswer(
+        team_mission_id=team_mission.id,
+        mcq_id=mcq.id,
+        selected_option_id=option.id,
+        is_correct=option.is_correct,
+    )
+    db.session.add(answer)
+
+    if option.is_correct:
+        scoring_service.score_mcq_correct(team, team_mission)
+
+    db.session.commit()
+
+    return jsonify(
+        {
+            "correct": option.is_correct,
+            "message": NARRATIVE["mcq_correct"] if option.is_correct else NARRATIVE["mcq_wrong"],
+        }
+    )
+
+
+@missions_bp.route("/challenge/submit", methods=["POST"])
+@team_required
+def submit_challenge():
+    team = current_team()
+    state = event_service.get_state()
+    if state.status != "running":
+        return jsonify({"error": "Event is not currently running."}), 409
+
+    missions = Mission.query.order_by(Mission.order_index).all()
+    mission, _ = mission_service.current_mission_for(team, missions)
+    if mission is None:
+        return jsonify({"error": "No active mission."}), 400
+
+    challenge = mission.challenge
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+
+    if len(team_mission.mcq_answers) < len(mission.mcqs):
+        return jsonify({"error": "Answer all threat assessment questions first."}), 400
+
+    if mission.order_index == max(m.order_index for m in missions) and len(team.clearance_stamps) < 2:
+        return jsonify({"error": NARRATIVE["clearance_required"]}), 403
+
+    if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
+        remaining = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
+        return jsonify({"error": NARRATIVE["cooldown"], "penalty_remaining": remaining}), 429
+
+    data = request.get_json(silent=True) or {}
+    answer = data.get("answer", request.form.get("answer", ""))
+
+    if challenge.type == "code":
+        team_mission.submission_text = answer
+        db.session.commit()
+        return jsonify({"queued": True, "message": NARRATIVE["challenge_queued"]})
+
+    correct = cipher_service.solve(answer, challenge.answer_key)
+    if not correct:
+        scoring_service.apply_retry_penalty(team, team_mission)
+        team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
+        db.session.commit()
+        return jsonify({"correct": False, "message": NARRATIVE["challenge_fail"]})
+
+    mission_service.complete_mission(team, team_mission, mission, "passed")
+    message = NARRATIVE["flag_final"] if challenge.type == "flag" else NARRATIVE["challenge_pass"]
+    return jsonify({"correct": True, "message": message})
+
+
+@missions_bp.route("/hint", methods=["POST"])
+@team_required
+def request_hint():
+    team = current_team()
+    if team.hints_used >= 3:
+        return jsonify({"error": "No hints remaining for this event."}), 403
+
+    missions = Mission.query.order_by(Mission.order_index).all()
+    mission, _ = mission_service.current_mission_for(team, missions)
+    if mission is None:
+        return jsonify({"error": "No active mission."}), 400
+
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+    if team_mission.hint_used:
+        return jsonify({"hint": mission.challenge.hint_text})
+
+    scoring_service.apply_hint_penalty(team, team_mission)
+    db.session.commit()
+    return jsonify({"hint": mission.challenge.hint_text})

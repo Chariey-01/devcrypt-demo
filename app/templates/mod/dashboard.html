@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Game Master — DevCrypt{% endblock %}
+{% block page_id %}mod{% endblock %}
+{% block content %}
+<main class="shell mod">
+  <header class="topbar">
+    <span class="brand-mini">DevCrypt</span>
+    <span class="pill">Game Master</span>
+    <span class="pill" id="event-status-pill">{{ state.status }}</span>
+    <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <button class="ghost" type="submit">Logout</button>
+    </form>
+  </header>
+
+  <section class="controls">
+    <form method="post" action="{{ url_for('mod.start_event') }}" class="inline-form">
+      <button type="submit">Start event</button>
+    </form>
+    <form method="post" action="{{ url_for('mod.pause_event') }}" class="inline-form">
+      <button type="submit">Pause event</button>
+    </form>
+    <form method="post" action="{{ url_for('mod.end_event') }}" class="inline-form">
+      <button type="submit" class="danger">End event</button>
+    </form>
+    <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">Export CSV</a>
+  </section>
+
+  <form method="post" action="{{ url_for('mod.broadcast') }}" class="broadcast-form">
+    <input type="text" name="message" placeholder="Broadcast a message to all teams…" required>
+    <button type="submit">Send</button>
+  </form>
+
+  <section id="team-table" class="card"></section>
+</main>
+{% endblock %}
