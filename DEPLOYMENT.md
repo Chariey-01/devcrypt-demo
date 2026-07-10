@@ -84,8 +84,11 @@ run a real event on Vercel with SQLite.
      across deploys — Vercel may spin up multiple function instances, and if `SECRET_KEY`
      changes between them, players' session cookies (and therefore logins) break
      unpredictably.
-3. Deploy. Vercel picks up `requirements.txt` (already includes `psycopg2-binary`) and the
-   `pyproject.toml` entrypoint automatically.
+3. Deploy. Vercel's build uses `uv`, which reads dependencies from `pyproject.toml`'s
+   `[project.dependencies]` (not `requirements.txt` — Vercel's Python/uv build ignores it
+   once a `pyproject.toml` is present). **If you add or change a dependency, update both
+   `requirements.txt` (used by local/Render/Railway pip installs) and `pyproject.toml`'s
+   `dependencies` list (used by Vercel) — they're intentionally duplicated, not linked.**
 4. Seed once against the same `DATABASE_URL`, from your own machine before the event:
    `DATABASE_URL=<your Postgres URL> python3 seed.py`.
 5. For anything beyond what's here (custom routes, build settings), follow Vercel's own
