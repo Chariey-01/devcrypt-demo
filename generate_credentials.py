@@ -16,10 +16,16 @@ Usage:
         --booth-agents agent1@devcrypt.local agent2@devcrypt.local \
         --security-officers officer@devcrypt.local \
         --out credentials.csv
+
+Add --qr to also print one QR code per credential (requires "qrcode[pil]",
+see requirements.txt) into --qr-dir. Each QR encodes plain login details as
+text, not a clickable link, so scanning it doesn't log anyone in on its own
+-- it just saves whoever's printing key cards from mistyping a random string.
 """
 
 import argparse
 import csv
+import re
 import secrets
 
 from app import create_app
@@ -64,6 +70,29 @@ def upsert_staff(role, emails):
     return rows
 
 
+def _safe_filename(text):
+    return re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+
+
+def write_qr_codes(rows, qr_dir, base_url):
+    import qrcode
+
+    qr_dir.mkdir(parents=True, exist_ok=True)
+    for row in rows:
+        if row["role"] == "team":
+            lines = [f"DevCrypt Team: {row['name']}", f"Key: {row['secret']}"]
+            login_path = "/auth/team-login"
+        else:
+            lines = [f"DevCrypt Staff ({row['role']})", f"Email: {row['login']}", f"Password: {row['secret']}"]
+            login_path = "/auth/login"
+        if base_url:
+            lines.append(f"Login at: {base_url.rstrip('/')}{login_path}")
+
+        img = qrcode.make("\n".join(lines))
+        filename = qr_dir / f"{row['role']}_{_safe_filename(row['name'])}.png"
+        img.save(filename)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--teams", nargs="+", default=["Alpha Squad", "Bravo Squad"])
@@ -71,6 +100,9 @@ def main():
     parser.add_argument("--booth-agents", nargs="+", default=["agent1@devcrypt.local", "agent2@devcrypt.local"])
     parser.add_argument("--security-officers", nargs="+", default=["officer@devcrypt.local"])
     parser.add_argument("--out", default="credentials.csv")
+    parser.add_argument("--qr", action="store_true", help="Also write one QR code PNG per credential")
+    parser.add_argument("--qr-dir", default="credentials_qr", help="Directory for QR PNGs (used with --qr)")
+    parser.add_argument("--base-url", default="", help="Included as a login link inside each QR code, e.g. https://devcrypt-demo.vercel.app")
     args = parser.parse_args()
 
     app = create_app()
@@ -88,10 +120,18 @@ def main():
         writer.writerows(rows)
 
     print(f"Generated {len(rows)} credentials -> {args.out}")
+
+    if args.qr:
+        from pathlib import Path
+
+        qr_dir = Path(args.qr_dir)
+        write_qr_codes(rows, qr_dir, args.base_url)
+        print(f"Wrote {len(rows)} QR codes -> {qr_dir}/")
+
     print(
-        "This file has plaintext secrets. Print the team keys onto key cards, "
-        "hand staff their logins, then delete this file — it can't be regenerated, "
-        "only replaced by re-running this script."
+        "These files have plaintext secrets. Print the team keys/QR codes onto key cards, "
+        "hand staff their logins, then delete both this file and the QR folder — they "
+        "can't be regenerated, only replaced by re-running this script."
     )
 
 
