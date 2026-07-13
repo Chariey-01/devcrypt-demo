@@ -37,6 +37,7 @@ function fmtClock(totalSeconds) {
   let activeTab = 0;
   let currentMissionId = null;
   let message = null;
+  let draftAnswer = "";
 
   function showMessage(text) {
     message = text || null;
@@ -128,6 +129,13 @@ function fmtClock(totalSeconds) {
       });
     });
 
+    const answerEl = panel.querySelector("#challenge-answer");
+    if (answerEl) {
+      answerEl.addEventListener("input", () => {
+        draftAnswer = answerEl.value;
+      });
+    }
+
     const submitBtn = panel.querySelector("#submit-challenge");
     if (submitBtn) {
       submitBtn.addEventListener("click", async () => {
@@ -136,6 +144,7 @@ function fmtClock(totalSeconds) {
           method: "POST",
           body: JSON.stringify({ answer }),
         });
+        draftAnswer = "";
         showMessage(res.data.message || res.data.error);
         await refresh();
       });
@@ -179,6 +188,7 @@ function fmtClock(totalSeconds) {
     if (mission.id !== currentMissionId) {
       currentMissionId = mission.id;
       activeTab = 0;
+      draftAnswer = "";
     }
 
     let timerHtml = "";
@@ -243,7 +253,7 @@ function fmtClock(totalSeconds) {
           challengeHtml += `
             <textarea id="challenge-answer" rows="4" placeholder="${
               c.type === "flag" ? "FLAG{...}" : "Type your fix here…"
-            }"></textarea>
+            }">${escapeHtml(draftAnswer)}</textarea>
             <button id="submit-challenge">Submit</button>`;
         }
         if (mission.penalty_remaining) {
