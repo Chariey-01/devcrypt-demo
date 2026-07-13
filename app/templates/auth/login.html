@@ -4,15 +4,7 @@
 <main class="shell auth-shell">
   <h1 class="brand-mini">DevCrypt</h1>
   <h2>Staff Login</h2>
-  <form method="post" class="auth-form">
-    <label for="email">Email</label>
-    <input id="email" name="email" type="email" autocomplete="email" required autofocus>
-
-    <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" required>
-
-    <button type="submit">Sign in</button>
-  </form>
+  {% include "auth/_staff_login_form.html" %}
   <p class="footnote"><a href="{{ url_for('home') }}">← Back</a></p>
 </main>
 {% endblock %}

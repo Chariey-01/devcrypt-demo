@@ -4,15 +4,7 @@
 <main class="shell auth-shell">
   <h1 class="brand-mini">DevCrypt</h1>
   <h2>Cyber Response Unit Login</h2>
-  <form method="post" class="auth-form">
-    <label for="name">Team name</label>
-    <input id="name" name="name" type="text" autocomplete="username" required autofocus>
-
-    <label for="key">Team key</label>
-    <input id="key" name="key" type="password" autocomplete="current-password" required>
-
-    <button type="submit">Deploy</button>
-  </form>
+  {% include "auth/_team_login_form.html" %}
   <p class="footnote"><a href="{{ url_for('home') }}">← Back</a></p>
 </main>
 {% endblock %}

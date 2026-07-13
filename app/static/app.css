@@ -122,12 +122,72 @@ a {
   font-size: 0.85rem;
 }
 
+/* Landing page role-card accents — same card, one border/heading tint per portal */
+
+.role-card-team:hover { border-color: var(--accent); }
+.role-card-staff h2, .role-card-staff h3 { color: var(--amber); }
+.role-card-staff:hover { border-color: var(--amber); }
+.role-card-moderator h2, .role-card-moderator h3 { color: var(--green); }
+.role-card-moderator:hover { border-color: var(--green); }
+
 /* Forms */
 
 .auth-shell {
   max-width: 420px;
   margin: 3rem auto;
 }
+
+/* Portal pages (Team / Staff / Moderator) */
+
+.portal-shell {
+  max-width: 460px;
+  margin: 3rem auto;
+  text-align: center;
+  --portal-accent: var(--accent);
+}
+
+.portal-back {
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.portal-back a {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.portal-back a:hover {
+  color: var(--portal-accent);
+}
+
+.portal-shell .eyebrow {
+  color: var(--portal-accent);
+}
+
+.portal-heading {
+  margin: 0.25rem 0 0.5rem;
+  color: var(--portal-accent);
+}
+
+.portal-description {
+  color: var(--text-dim);
+  margin: 0 0 1.5rem;
+}
+
+.portal-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  text-align: left;
+}
+
+.portal-panel button[type="submit"] {
+  background: var(--portal-accent);
+}
+
+.portal-staff { --portal-accent: var(--amber); }
+.portal-moderator { --portal-accent: var(--green); }
 
 .auth-form, .booth-grid {
   display: flex;

@@ -7,13 +7,17 @@
   <p class="tagline">Breach the Metaverse</p>
 
   <div class="role-grid">
-    <a class="role-card" href="{{ url_for('auth.team_login') }}">
-      <h2>Cyber Response Unit</h2>
-      <p>Team login — enter your team name and key card.</p>
+    <a class="role-card role-card-team" href="{{ url_for('portals.team_portal') }}">
+      <h2>Team Portal</h2>
+      <p>Cyber Response Units — enter your team name and key card.</p>
     </a>
-    <a class="role-card" href="{{ url_for('auth.login') }}">
-      <h2>Staff Login</h2>
-      <p>Booth Agent, Security Officer, or Game Master.</p>
+    <a class="role-card role-card-staff" href="{{ url_for('portals.staff_portal') }}">
+      <h2>Staff Portal</h2>
+      <p>Booth Agents and Security Officers.</p>
+    </a>
+    <a class="role-card role-card-moderator" href="{{ url_for('portals.moderator_portal') }}">
+      <h2>Moderator Portal</h2>
+      <p>Game Master — start, monitor, and run the event.</p>
     </a>
   </div>
 

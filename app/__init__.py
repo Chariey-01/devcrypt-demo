@@ -10,6 +10,7 @@ from .blueprints.leaderboard import leaderboard_bp
 from .blueprints.mod import mod_bp
 from .blueprints.booth import booth_bp
 from .blueprints.security import security_bp
+from .blueprints.portals import portals_bp
 
 
 def create_app(config_class=Config):
@@ -30,6 +31,7 @@ def create_app(config_class=Config):
     app.register_blueprint(mod_bp)
     app.register_blueprint(booth_bp)
     app.register_blueprint(security_bp)
+    app.register_blueprint(portals_bp)
 
     @login_manager.user_loader
     def load_user(user_id):
