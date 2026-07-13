@@ -302,6 +302,12 @@ function fmtClock(totalSeconds) {
     renderBanners(data);
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);
+    // Skip the mission panel rebuild while the player is actively typing a
+    // submission — it fully replaces #challenge-answer's DOM node every poll,
+    // wiping out whatever they've typed. Everything else above still updates live.
+    if (document.activeElement && document.activeElement.id === "challenge-answer") {
+      return;
+    }
     renderMissionPanel(data);
   }
 
