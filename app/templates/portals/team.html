@@ -1,7 +1,21 @@
 {% extends "portals/_layout.html" %}
-{% block title %}Team Portal — DevCrypt{% endblock %}
+{% block title %}Access Mission Network — DevCrypt{% endblock %}
 {% block portal_class %}portal-team{% endblock %}
-{% block portal_eyebrow %}Cyber Response Unit{% endblock %}
-{% block portal_heading %}Team Portal{% endblock %}
+{% block portal_eyebrow %}Cyber Response Unit &middot; Mission Briefing{% endblock %}
+{% block portal_icon %}{{ icon('network', 22) }}{% endblock %}
+{% block portal_heading %}Access Mission Network{% endblock %}
 {% block portal_description %}Enter your team name and key card to resume your mission.{% endblock %}
+{% block portal_id %}NET-ACCESS-01{% endblock %}
+{% block portal_status %}
+  <div class="ops-grid" style="margin-bottom:1rem;">
+    <div class="ops-panel">
+      <p class="ops-label"><span class="status-dot"></span> Network</p>
+      <p class="ops-value ok">SECURE</p>
+    </div>
+    <div class="ops-panel">
+      <p class="ops-label">{{ icon('radar', 14) }} Nodes</p>
+      <p class="ops-value info">6 / 6</p>
+    </div>
+  </div>
+{% endblock %}
 {% block portal_form %}{% include "auth/_team_login_form.html" %}{% endblock %}

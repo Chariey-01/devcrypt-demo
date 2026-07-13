@@ -4,17 +4,19 @@
 {% block content %}
 <main class="shell booth">
   <header class="topbar">
-    <span class="brand-mini">DevCrypt</span>
-    <span class="pill">{{ mission.title }}</span>
-    <a class="ghost-link" href="{{ url_for('booth.select_booth') }}">Switch booth</a>
+    <span class="brand-mini">{{ icon('server', 16) }} DevCrypt</span>
+    <span class="pill">{{ icon('crosshair', 13) }} {{ mission.title }}</span>
+    <span class="pill"><span class="status-dot"></span> Monitoring</span>
+    <a class="ghost-link" href="{{ url_for('booth.select_booth') }}">{{ icon('server', 13) }} Switch booth</a>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
-      <button class="ghost" type="submit">Logout</button>
+      <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>
 
-  <p class="hint-text">Only <strong>PASS</strong>, <strong>RETRY</strong>, <strong>HINT</strong>, and
+  <p class="hint-text">{{ icon('eye', 14) }} Only <strong>PASS</strong>, <strong>RETRY</strong>, <strong>HINT</strong>, and
     <strong>MISSION OVERRIDE</strong> are available here. Read hint text aloud — don't freestyle.</p>
 
+  <p class="section-heading">{{ icon('database', 14) }} Verification Queue</p>
   <section id="queue" class="queue"></section>
 </main>
 {% endblock %}

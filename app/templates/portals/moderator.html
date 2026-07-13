@@ -1,7 +1,21 @@
 {% extends "portals/_layout.html" %}
-{% block title %}Moderator Portal — DevCrypt{% endblock %}
+{% block title %}Game Control — DevCrypt{% endblock %}
 {% block portal_class %}portal-moderator{% endblock %}
-{% block portal_eyebrow %}Game Master Command{% endblock %}
-{% block portal_heading %}Moderator Portal{% endblock %}
-{% block portal_description %}Sign in to start, monitor, and control the event.{% endblock %}
+{% block portal_eyebrow %}Game Master &middot; Cyber Command Center{% endblock %}
+{% block portal_icon %}{{ icon('cpu', 22) }}{% endblock %}
+{% block portal_heading %}Game Control{% endblock %}
+{% block portal_description %}Sign in to start, monitor, and control the entire event.{% endblock %}
+{% block portal_id %}CMD-ROOT-00{% endblock %}
+{% block portal_status %}
+  <div class="ops-grid" style="margin-bottom:1rem;">
+    <div class="ops-panel">
+      <p class="ops-label"><span class="status-dot"></span> Command</p>
+      <p class="ops-value ok">READY</p>
+    </div>
+    <div class="ops-panel">
+      <p class="ops-label"><span class="icon" aria-hidden="true">{{ icon('shield-check', 14) }}</span> Clearance</p>
+      <p class="ops-value classified">ROOT</p>
+    </div>
+  </div>
+{% endblock %}
 {% block portal_form %}{% include "auth/_staff_login_form.html" %}{% endblock %}

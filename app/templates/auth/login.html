@@ -2,9 +2,9 @@
 {% block title %}Staff Login — DevCrypt{% endblock %}
 {% block content %}
 <main class="shell auth-shell">
-  <h1 class="brand-mini">DevCrypt</h1>
-  <h2>Staff Login</h2>
+  <h1 class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</h1>
+  <h2>{{ icon('shield', 18) }} Staff Login</h2>
   {% include "auth/_staff_login_form.html" %}
-  <p class="footnote"><a href="{{ url_for('home') }}">← Back</a></p>
+  <p class="footnote"><a href="{{ url_for('home') }}">&larr; Back</a></p>
 </main>
 {% endblock %}

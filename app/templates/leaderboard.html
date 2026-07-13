@@ -4,10 +4,13 @@
 {% block content %}
 <main class="shell leaderboard-shell">
   <header class="topbar">
-    <span class="brand-mini">DevCrypt</span>
-    <span class="pill">Live Leaderboard</span>
-    <a class="ghost-link" href="{{ url_for('home') }}">← Home</a>
+    <span class="brand-mini">{{ icon('radio-tower', 16) }} DevCrypt</span>
+    <span class="pill"><span class="status-dot"></span> Live Leaderboard</span>
+    <a class="ghost-link" href="{{ url_for('home') }}">&larr; Home</a>
   </header>
+  <div class="grid-toolbar">
+    <input type="search" id="leaderboard-search" placeholder="Search teams…">
+  </div>
   <section id="leaderboard-table" class="card"></section>
 </main>
 {% endblock %}

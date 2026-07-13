@@ -3,40 +3,46 @@
 {% block content %}
 <main class="shell security">
   <header class="topbar">
-    <span class="brand-mini">DevCrypt</span>
-    <span class="pill">Security Officer</span>
+    <span class="brand-mini">{{ icon('shield', 16) }} DevCrypt</span>
+    <span class="pill">{{ icon('fingerprint', 13) }} Security Officer</span>
+    <span class="pill"><span class="status-dot"></span> Checkpoint Active</span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
-      <button class="ghost" type="submit">Logout</button>
+      <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>
 
-  <p class="hint-text">Two clearance stamps unlock the Metaverse Core (final vault) for a team.</p>
+  <p class="hint-text">{{ icon('shield-check', 14) }} Two clearance stamps unlock the Metaverse Core (final vault) for a team.</p>
 
-  <table class="data-table">
-    <thead>
-      <tr><th>Team</th><th>Checkpoint 1</th><th>Checkpoint 2</th></tr>
-    </thead>
-    <tbody>
-      {% for team in teams %}
-      <tr>
-        <td>{{ team.name }}</td>
-        {% for checkpoint_id in (1, 2) %}
-        <td>
-          {% set stamped = team.clearance_stamps|selectattr("checkpoint_id", "equalto", checkpoint_id)|list %}
-          {% if stamped %}
-          <span class="badge badge-passed">Stamped</span>
-          {% else %}
-          <form method="post" action="{{ url_for('security.issue_stamp') }}" class="inline-form">
-            <input type="hidden" name="team_id" value="{{ team.id }}">
-            <input type="hidden" name="checkpoint_id" value="{{ checkpoint_id }}">
-            <button type="submit">Issue stamp</button>
-          </form>
-          {% endif %}
-        </td>
+  <div class="grid-toolbar">
+    <input type="search" placeholder="Search teams…" data-grid-search-for="checkpoint-grid">
+  </div>
+  <div id="checkpoint-grid">
+    <table class="data-table">
+      <thead>
+        <tr><th>{{ icon('users', 12) }} Team</th><th>{{ icon('shield-check', 12) }} Checkpoint 1</th><th>{{ icon('shield-check', 12) }} Checkpoint 2</th></tr>
+      </thead>
+      <tbody>
+        {% for team in teams %}
+        <tr>
+          <td>{{ team.name }}</td>
+          {% for checkpoint_id in (1, 2) %}
+          <td>
+            {% set stamped = team.clearance_stamps|selectattr("checkpoint_id", "equalto", checkpoint_id)|list %}
+            {% if stamped %}
+            <span class="badge badge-passed">{{ icon('check', 11) }} Stamped</span>
+            {% else %}
+            <form method="post" action="{{ url_for('security.issue_stamp') }}" class="inline-form">
+              <input type="hidden" name="team_id" value="{{ team.id }}">
+              <input type="hidden" name="checkpoint_id" value="{{ checkpoint_id }}">
+              <button type="submit">{{ icon('shield-check', 13) }} Issue Clearance</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
         {% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      </tbody>
+    </table>
+  </div>
 </main>
 {% endblock %}

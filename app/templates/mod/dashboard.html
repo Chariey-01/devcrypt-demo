@@ -4,32 +4,38 @@
 {% block content %}
 <main class="shell mod">
   <header class="topbar">
-    <span class="brand-mini">DevCrypt</span>
-    <span class="pill">Game Master</span>
-    <span class="pill" id="event-status-pill">{{ state.status }}</span>
+    <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
+    <span class="pill">{{ icon('shield-check', 13) }} Game Master</span>
+    <span class="pill" id="event-status-pill"><span class="status-dot {{ '' if state.status == 'running' else ('warn' if state.status == 'paused' else 'off') }}"></span> {{ state.status }}</span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
-      <button class="ghost" type="submit">Logout</button>
+      <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>
 
+  <p class="section-heading">{{ icon('terminal', 14) }} Event Controls</p>
   <section class="controls">
     <form method="post" action="{{ url_for('mod.start_event') }}" class="inline-form">
-      <button type="submit">Start event</button>
+      <button type="submit">{{ icon('zap', 13) }} {{ 'Resume Event' if state.status == 'paused' else 'Initialize Mission' }}</button>
     </form>
     <form method="post" action="{{ url_for('mod.pause_event') }}" class="inline-form">
-      <button type="submit">Pause event</button>
+      <button type="submit" class="ghost">{{ icon('octagon-alert', 13) }} Pause Event</button>
     </form>
     <form method="post" action="{{ url_for('mod.end_event') }}" class="inline-form">
-      <button type="submit" class="danger">End event</button>
+      <button type="submit" class="danger">{{ icon('siren', 13) }} Terminate Event</button>
     </form>
-    <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">Export CSV</a>
+    <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">{{ icon('database', 13) }} Export CSV</a>
   </section>
 
+  <p class="section-heading">{{ icon('radio-tower', 14) }} Broadcast Alert</p>
   <form method="post" action="{{ url_for('mod.broadcast') }}" class="broadcast-form">
     <input type="text" name="message" placeholder="Broadcast a message to all teams…" required>
-    <button type="submit">Send</button>
+    <button type="submit">{{ icon('radio-tower', 13) }} Send</button>
   </form>
 
+  <p class="section-heading">{{ icon('users', 14) }} Active Teams</p>
+  <div class="grid-toolbar">
+    <input type="search" id="team-search" placeholder="Search teams…">
+  </div>
   <section id="team-table" class="card"></section>
 </main>
 {% endblock %}

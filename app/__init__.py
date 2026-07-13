@@ -11,6 +11,7 @@ from .blueprints.mod import mod_bp
 from .blueprints.booth import booth_bp
 from .blueprints.security import security_bp
 from .blueprints.portals import portals_bp
+from .icons import icon
 
 
 def create_app(config_class=Config):
@@ -22,6 +23,8 @@ def create_app(config_class=Config):
     socketio.init_app(app, cors_allowed_origins="*")
     bcrypt.init_app(app)
     login_manager.init_app(app)
+
+    app.jinja_env.globals["icon"] = icon
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(missions_bp)

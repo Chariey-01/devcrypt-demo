@@ -4,9 +4,10 @@
   <p class="footnote portal-back"><a href="{{ url_for('home') }}">&larr; All portals</a></p>
   <p class="eyebrow">{% block portal_eyebrow %}{% endblock %}</p>
   <h1 class="brand-mini">DevCrypt</h1>
-  <h2 class="portal-heading">{% block portal_heading %}{% endblock %}</h2>
+  <h2 class="portal-heading">{% block portal_icon %}{% endblock %} {% block portal_heading %}{% endblock %}</h2>
   <p class="portal-description">{% block portal_description %}{% endblock %}</p>
-  <div class="portal-panel">
+  {% block portal_status %}{% endblock %}
+  <div class="portal-panel" data-panel-id="{% block portal_id %}{% endblock %}">
     {% block portal_form %}{% endblock %}
   </div>
 </main>

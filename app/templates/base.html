@@ -5,10 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}DevCrypt{% endblock %}</title>
+  <link rel="preload" href="{{ url_for('static', filename='fonts/plex-mono-400.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ url_for('static', filename='fonts/plex-sans-var.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 
 <body data-page="{% block page_id %}{% endblock %}">
+  <div class="command-backdrop" aria-hidden="true"></div>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <div class="flash-stack">

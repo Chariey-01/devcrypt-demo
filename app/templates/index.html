@@ -6,21 +6,55 @@
   <h1 class="brand">DevCrypt</h1>
   <p class="tagline">Breach the Metaverse</p>
 
+  <div class="ops-grid" style="max-width:520px;margin-top:0.75rem;">
+    <div class="ops-panel">
+      <p class="ops-label"><span class="status-dot" id="landing-status-dot"></span> System</p>
+      <p class="ops-value ok" id="landing-status-value">ONLINE</p>
+    </div>
+    <div class="ops-panel">
+      <p class="ops-label">{{ icon('users', 14) }} Active teams</p>
+      <p class="ops-value info" id="landing-team-count">—</p>
+    </div>
+    <div class="ops-panel">
+      <p class="ops-label">{{ icon('timer', 14) }} Local time</p>
+      <p class="ops-value" id="landing-clock">--:--:--</p>
+    </div>
+  </div>
+
   <div class="role-grid">
     <a class="role-card role-card-team" href="{{ url_for('portals.team_portal') }}">
-      <h2>Team Portal</h2>
+      <h2>{{ icon('fingerprint', 18) }} Team Portal</h2>
       <p>Cyber Response Units — enter your team name and key card.</p>
     </a>
     <a class="role-card role-card-staff" href="{{ url_for('portals.staff_portal') }}">
-      <h2>Staff Portal</h2>
+      <h2>{{ icon('eye', 18) }} Staff Portal</h2>
       <p>Booth Agents and Security Officers.</p>
     </a>
     <a class="role-card role-card-moderator" href="{{ url_for('portals.moderator_portal') }}">
-      <h2>Moderator Portal</h2>
+      <h2>{{ icon('terminal', 18) }} Moderator Portal</h2>
       <p>Game Master — start, monitor, and run the event.</p>
     </a>
   </div>
 
-  <p class="footnote"><a href="{{ url_for('leaderboard.leaderboard') }}">View live leaderboard →</a></p>
+  <p class="footnote"><a href="{{ url_for('leaderboard.leaderboard') }}">{{ icon('radio-tower', 13) }} View live leaderboard →</a></p>
 </main>
+<script>
+  (function () {
+    var clockEl = document.getElementById('landing-clock');
+    function tick() {
+      clockEl.textContent = new Date().toLocaleTimeString([], { hour12: false });
+    }
+    tick();
+    setInterval(tick, 1000);
+
+    fetch('/leaderboard/data')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        document.getElementById('landing-team-count').textContent = (data.leaderboard || []).length;
+      })
+      .catch(function () {
+        document.getElementById('landing-team-count').textContent = '0';
+      });
+  })();
+</script>
 {% endblock %}
