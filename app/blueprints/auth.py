@@ -24,8 +24,8 @@ def team_login():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         key = request.form.get("key", "").strip()
-        team = team_repo.get_team_by_key(key) if key else None
-        if not team or team.name.lower() != name.lower():
+        team = team_repo.get_team_by_name(name) if name else None
+        if not team or not key or not team.check_key(key):
             flash("Invalid team name or key.", "error")
             return render_template("auth/team_login.html"), 401
         session["team_id"] = team.id
