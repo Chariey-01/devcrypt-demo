@@ -484,6 +484,50 @@ document.addEventListener("DOMContentLoaded", () => {
 })();
 
 /* ---------------------------------------------------------------- */
+/* Submission alerts — live notification bar for booth + security     */
+/* Fires only for submissions that appear *after* the first poll, so  */
+/* the bar doesn't flood with everything already pending on load.     */
+/* ---------------------------------------------------------------- */
+
+(function submissionAlerts() {
+  if (PAGE !== "booth" && PAGE !== "security") return;
+
+  const bar = document.getElementById("alert-bar");
+  if (!bar) return;
+
+  let seen = null;
+
+  function pushAlert(item) {
+    const toast = document.createElement("div");
+    toast.className = "alert-toast";
+    toast.innerHTML = `${icon("radio", 14)} <strong>${escapeHtml(
+      item.team
+    )}</strong> submitted a solution — ${escapeHtml(item.mission)}`;
+    bar.prepend(toast);
+    while (bar.children.length > 4) bar.removeChild(bar.lastChild);
+    setTimeout(() => toast.remove(), 10000);
+  }
+
+  async function refresh() {
+    const res = await api("/booth/alerts/data");
+    if (!res.ok) return;
+    const alerts = res.data.alerts || [];
+    const ids = new Set(alerts.map((a) => a.id));
+
+    if (seen) {
+      alerts
+        .filter((a) => !seen.has(a.id))
+        .reverse()
+        .forEach(pushAlert);
+    }
+    seen = ids;
+  }
+
+  refresh();
+  setInterval(refresh, 2000);
+})();
+
+/* ---------------------------------------------------------------- */
 /* Booth agent portal                                                 */
 /* ---------------------------------------------------------------- */
 

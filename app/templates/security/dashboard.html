@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Security Checkpoints — DevCrypt{% endblock %}
+{% block page_id %}security{% endblock %}
 {% block content %}
 <main class="shell security">
   <header class="topbar">
@@ -10,6 +11,8 @@
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>
+
+  <div id="alert-bar" class="alert-bar" aria-live="polite"></div>
 
   <p class="hint-text">{{ icon('shield-check', 14) }} Two clearance stamps unlock the Metaverse Core (final vault) for a team.</p>
 

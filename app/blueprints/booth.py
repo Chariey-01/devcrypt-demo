@@ -41,6 +41,31 @@ def queue():
     return render_template("booth/dashboard.html", mission=mission)
 
 
+@booth_bp.route("/alerts/data")
+@login_required
+@roles_required("booth_agent", "security_officer")
+def alerts_data():
+    pending = (
+        TeamMission.query.filter_by(status="in_progress")
+        .filter(TeamMission.submission_text.isnot(None))
+        .order_by(TeamMission.id.desc())
+        .limit(20)
+        .all()
+    )
+    return jsonify(
+        {
+            "alerts": [
+                {
+                    "id": tm.id,
+                    "team": tm.team.name,
+                    "mission": tm.mission.title,
+                }
+                for tm in pending
+            ]
+        }
+    )
+
+
 @booth_bp.route("/queue/data")
 @login_required
 @roles_required("booth_agent")
