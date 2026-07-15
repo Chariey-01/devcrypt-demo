@@ -1,14 +1,17 @@
+import json
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, render_template, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
-from ..models import Mission, TeamMCQAnswer, TeamMission
+from ..models import CodeSubmission, Mission, TeamMCQAnswer, TeamMission
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
+from ..services.grading_service import GradingEngine
 from ..services.mission_service import MissionService
 from ..services.scoring_service import ScoringService
+from ..sockets import notify_mod, notify_team
 
 missions_bp = Blueprint("missions", __name__, url_prefix="/missions")
 
@@ -16,6 +19,7 @@ cipher_service = CipherService()
 scoring_service = ScoringService()
 mission_service = MissionService(scoring=scoring_service, cipher=cipher_service)
 event_service = EventService()
+grading_engine = GradingEngine()
 
 NARRATIVE = {
     "mcq_correct": "CIPHER LETTER DECODED",
@@ -49,16 +53,53 @@ def _serialize_mcq(mcq, team_mission):
     }
 
 
+def _hint_text(challenge):
+    # Agent-authored hints (Hint rows) take precedence; legacy single hint_text is the
+    # fallback for missions that predate the multi-hint authoring flow.
+    if challenge.hints:
+        return challenge.hints[0].text
+    return challenge.hint_text
+
+
+def _serialize_grading_results(results):
+    return [
+        {
+            "name": r.name,
+            "visibility": r.visibility,
+            "passed": r.passed,
+            "weight": r.weight,
+            "failure_message": r.failure_message,
+            "input_data": r.input_data,
+            "expected_output": r.expected_output,
+            "actual_output": r.actual_output,
+        }
+        for r in results
+    ]
+
+
 def _serialize_challenge(challenge, team_mission):
     options = None
     if challenge.type == "mcq" and challenge.steps:
         options = [line.strip() for line in challenge.steps.splitlines() if line.strip()]
-    return {
+    payload = {
         "type": challenge.type,
         "prompt": challenge.prompt,
         "options": options,
-        "hint_text": challenge.hint_text if (team_mission and team_mission.hint_used) else None,
+        "hint_text": _hint_text(challenge) if (team_mission and team_mission.hint_used) else None,
+        "grading_mode": challenge.grading_mode,
     }
+    if challenge.grading_mode == "auto":
+        payload.update(
+            {
+                "title": challenge.title,
+                "language": challenge.language,
+                "function_signature": challenge.function_signature,
+                "starter_code": challenge.starter_code,
+                "max_attempts": challenge.max_attempts,
+                "attempts_used": team_mission.attempts if team_mission else 0,
+            }
+        )
+    return payload
 
 
 @missions_bp.route("/status")
@@ -216,9 +257,57 @@ def submit_challenge():
     data = request.get_json(silent=True) or {}
     answer = data.get("answer", request.form.get("answer", ""))
 
+    if challenge.grading_mode == "auto":
+        if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
+            return jsonify({"error": "No attempts remaining for this challenge."}), 403
+
+        code = data.get("code", answer)
+        grading_result = grading_engine.run_all_tests(challenge, code)
+        db.session.add(
+            CodeSubmission(
+                team_mission_id=team_mission.id,
+                code=code,
+                mode="submit",
+                total_tests=grading_result.total_tests,
+                passed_tests=grading_result.passed_tests,
+                weighted_score=grading_result.weighted_score,
+                percent_score=grading_result.percent_score,
+                passed=grading_result.passed_threshold,
+                results_json=json.dumps(_serialize_grading_results(grading_result.results)),
+            )
+        )
+
+        if grading_result.passed_threshold:
+            mission_service.complete_mission(team, team_mission, mission, "passed", grading_result=grading_result)
+            return jsonify(
+                {
+                    "correct": True,
+                    "message": NARRATIVE["challenge_pass"],
+                    "percent_score": grading_result.percent_score,
+                    "passed_tests": grading_result.passed_tests,
+                    "total_tests": grading_result.total_tests,
+                }
+            )
+
+        scoring_service.apply_retry_penalty(team, team_mission)
+        team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
+        db.session.commit()
+        notify_team(team.id, "submission_failed")
+        notify_mod("submission_failed")
+        return jsonify(
+            {
+                "correct": False,
+                "message": NARRATIVE["challenge_fail"],
+                "percent_score": grading_result.percent_score,
+                "passed_tests": grading_result.passed_tests,
+                "total_tests": grading_result.total_tests,
+            }
+        )
+
     if challenge.type == "code":
         team_mission.submission_text = answer
         db.session.commit()
+        notify_mod("submission_queued")
         return jsonify({"queued": True, "message": NARRATIVE["challenge_queued"]})
 
     correct = cipher_service.solve(answer, challenge.answer_key)
@@ -226,6 +315,8 @@ def submit_challenge():
         scoring_service.apply_retry_penalty(team, team_mission)
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
         db.session.commit()
+        notify_team(team.id, "submission_failed")
+        notify_mod("submission_failed")
         return jsonify({"correct": False, "message": NARRATIVE["challenge_fail"]})
 
     mission_service.complete_mission(team, team_mission, mission, "passed")
@@ -247,8 +338,55 @@ def request_hint():
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
     if team_mission.hint_used:
-        return jsonify({"hint": mission.challenge.hint_text})
+        return jsonify({"hint": _hint_text(mission.challenge)})
 
     scoring_service.apply_hint_penalty(team, team_mission)
     db.session.commit()
-    return jsonify({"hint": mission.challenge.hint_text})
+    return jsonify({"hint": _hint_text(mission.challenge)})
+
+
+@missions_bp.route("/challenge/run-tests", methods=["POST"])
+@team_required
+def run_visible_tests():
+    team = current_team()
+    state = event_service.get_state()
+    if state.status != "running":
+        return jsonify({"error": "Event is not currently running."}), 409
+
+    missions = Mission.query.order_by(Mission.order_index).all()
+    mission, _ = mission_service.current_mission_for(team, missions)
+    if mission is None:
+        return jsonify({"error": "No active mission."}), 400
+
+    challenge = mission.challenge
+    if challenge is None or challenge.grading_mode != "auto":
+        return jsonify({"error": "This challenge does not support test runs."}), 400
+
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+    data = request.get_json(silent=True) or {}
+    code = data.get("code", "")
+
+    grading_result = grading_engine.run_visible_tests(challenge, code)
+    db.session.add(
+        CodeSubmission(
+            team_mission_id=team_mission.id,
+            code=code,
+            mode="run_visible",
+            total_tests=grading_result.total_tests,
+            passed_tests=grading_result.passed_tests,
+            weighted_score=grading_result.weighted_score,
+            percent_score=grading_result.percent_score,
+            passed=grading_result.passed_threshold,
+            results_json=json.dumps(_serialize_grading_results(grading_result.results)),
+        )
+    )
+    db.session.commit()
+    notify_mod("visible_tests_run")
+
+    return jsonify(
+        {
+            "results": _serialize_grading_results(grading_result.results),
+            "passed_tests": grading_result.passed_tests,
+            "total_tests": grading_result.total_tests,
+        }
+    )

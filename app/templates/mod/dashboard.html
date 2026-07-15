@@ -26,6 +26,15 @@
     <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">{{ icon('database', 13) }} Export CSV</a>
   </section>
 
+  <section class="controls">
+    <form method="post" action="{{ url_for('mod.publish_event') }}" class="inline-form">
+      <button type="submit" class="ghost">{{ icon('radar', 13) }} Publish Event</button>
+    </form>
+    <form method="post" action="{{ url_for('mod.archive_event') }}" class="inline-form">
+      <button type="submit" class="ghost">{{ icon('file-lock-2', 13) }} Archive Event</button>
+    </form>
+  </section>
+
   <p class="section-heading">{{ icon('radio-tower', 14) }} Broadcast Alert</p>
   <form method="post" action="{{ url_for('mod.broadcast') }}" class="broadcast-form">
     <input type="text" name="message" placeholder="Broadcast a message to all teams…" required>
@@ -37,5 +46,17 @@
     <input type="search" id="team-search" placeholder="Search teams…">
   </div>
   <section id="team-table" class="card"></section>
+
+  <p class="section-heading">{{ icon('key', 14) }} Teams &amp; Credentials</p>
+  <section id="team-admin" class="card"></section>
+
+  <p class="section-heading">{{ icon('flame-kindling', 14) }} Agents &amp; Booths</p>
+  <section id="agent-overview" class="card"></section>
+
+  <p class="section-heading">{{ icon('scan-line', 14) }} Live Submissions</p>
+  <section id="submissions-feed" class="card"></section>
 </main>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='mod_admin.js') }}"></script>
 {% endblock %}

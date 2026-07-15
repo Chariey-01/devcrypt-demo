@@ -26,22 +26,11 @@ text, not a clickable link, so scanning it doesn't log anyone in on its own
 import argparse
 import csv
 import re
-import secrets
 
 from app import create_app
 from app.extensions import db
 from app.models import Team, User
-
-# Excludes 0/O and 1/I/L so a team reading a printed key card aloud can't confuse them.
-TEAM_KEY_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-
-
-def generate_team_key(length=8):
-    return "".join(secrets.choice(TEAM_KEY_ALPHABET) for _ in range(length))
-
-
-def generate_password():
-    return secrets.token_urlsafe(18)
+from app.services.credential_service import generate_password, generate_team_key
 
 
 def upsert_teams(names):
@@ -102,7 +91,7 @@ def main():
     parser.add_argument("--out", default="credentials.csv")
     parser.add_argument("--qr", action="store_true", help="Also write one QR code PNG per credential")
     parser.add_argument("--qr-dir", default="credentials_qr", help="Directory for QR PNGs (used with --qr)")
-    parser.add_argument("--base-url", default="", help="Included as a login link inside each QR code, e.g. https://devcrypt-demo.vercel.app")
+    parser.add_argument("--base-url", default="", help="Included as a login link inside each QR code, e.g. https://your-app.up.railway.app")
     args = parser.parse_args()
 
     app = create_app()

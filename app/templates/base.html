@@ -25,7 +25,9 @@
 
   {% block content %}{% endblock %}
 
+  <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
 </body>
 
 </html>

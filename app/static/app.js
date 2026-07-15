@@ -8,6 +8,12 @@ function icon(name, size = 16, cls = "") {
 
 const PAGE = document.body.dataset.page;
 
+// Low-latency nudge layered on top of every page's own poll loop below, never a replacement for
+// it: a socket event just triggers that page's existing refresh() immediately instead of waiting
+// up to 2s for the next tick. If the socket never connects or drops mid-session, the poll loop
+// keeps everything eventually-consistent regardless.
+const socket = ["player", "mod", "leaderboard"].includes(PAGE) ? io() : null;
+
 async function api(url, options = {}) {
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -114,6 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentMissionId = null;
   let message = null;
   let draftAnswer = "";
+  let testResults = null; // last "Run Visible Tests" result, cleared when the mission changes
 
   function showMessage(text) {
     message = text || null;
@@ -165,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (data.event_status !== "running") {
       eventBanner.classList.remove("hidden");
       eventBanner.innerHTML =
-        data.event_status === "not_started"
+        data.event_status === "not_started" || data.event_status === "draft"
           ? `${icon("radar", 14)} STANDING BY — waiting for the Game Master to start the event.`
           : data.event_status === "paused"
           ? `${icon("octagon-alert", 14)} EVENT PAUSED by the Game Master.`
@@ -209,23 +216,62 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    const answerEl = panel.querySelector("#challenge-answer");
+    const answerEl = panel.querySelector("#challenge-answer, #code-editor");
     if (answerEl) {
       answerEl.addEventListener("input", () => {
         draftAnswer = answerEl.value;
       });
     }
 
+    const runTestsBtn = panel.querySelector("#run-tests");
+    if (runTestsBtn) {
+      runTestsBtn.addEventListener("click", async () => {
+        const code = panel.querySelector("#code-editor").value;
+        runTestsBtn.disabled = true;
+        const res = await api("/missions/challenge/run-tests", {
+          method: "POST",
+          body: JSON.stringify({ code }),
+        });
+        runTestsBtn.disabled = false;
+        if (res.ok) {
+          testResults = res.data;
+          const resultsEl = panel.querySelector("#test-results");
+          if (resultsEl) resultsEl.innerHTML = renderTestResults(testResults);
+        } else {
+          showMessage(res.data.error);
+        }
+      });
+    }
+
     const submitBtn = panel.querySelector("#submit-challenge");
     if (submitBtn) {
       submitBtn.addEventListener("click", async () => {
-        const answer = panel.querySelector("#challenge-answer").value;
-        const res = await api("/missions/challenge/submit", {
-          method: "POST",
-          body: JSON.stringify({ answer }),
-        });
+        const value = panel.querySelector("#challenge-answer, #code-editor").value;
+        // Grading runs server-side and can legitimately take several seconds under peak event
+        // load (many teams submitting at once all contend for the same sandboxed-subprocess
+        // CPU budget) — disable + relabel so a slow grading run reads as "working," not "did
+        // my click register?", and so a player can't fire a second submission (and burn an
+        // extra attempt against max_attempts) while the first is still in flight.
+        submitBtn.disabled = true;
+        const originalLabel = submitBtn.innerHTML;
+        submitBtn.innerHTML = "Grading&hellip;";
+        let res;
+        try {
+          res = await api("/missions/challenge/submit", {
+            method: "POST",
+            body: JSON.stringify({ answer: value, code: value }),
+          });
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalLabel;
+        }
         draftAnswer = "";
-        showMessage(res.data.message || res.data.error);
+        testResults = null;
+        const detail =
+          res.data.percent_score !== undefined
+            ? ` (${res.data.passed_tests}/${res.data.total_tests} tests, ${res.data.percent_score}%)`
+            : "";
+        showMessage((res.data.message || res.data.error) + detail);
         await refresh();
       });
     }
@@ -244,6 +290,29 @@ document.addEventListener("DOMContentLoaded", () => {
         await refresh();
       });
     }
+  }
+
+  function renderTestResults(results) {
+    if (!results) return "";
+    const rows = results.results
+      .map((r) => {
+        const passIcon = icon(r.passed ? "check" : "x", 13);
+        let detail = "";
+        if (r.visibility === "visible") {
+          detail = `<p class="hint-text mono">input: ${escapeHtml(r.input_data ?? "")} — expected: ${escapeHtml(
+            r.expected_output ?? ""
+          )} — got: ${escapeHtml(r.actual_output ?? "")}</p>`;
+        }
+        return `<div class="ops-panel">
+          <p class="ops-value ${r.passed ? "ok" : "crit"}">${passIcon} ${escapeHtml(r.name)}</p>
+          ${!r.passed && r.failure_message ? `<p class="hint-text">${escapeHtml(r.failure_message)}</p>` : ""}
+          ${detail}
+        </div>`;
+      })
+      .join("");
+    return `
+      <p class="hint-text">${icon("gauge", 12)} ${results.passed_tests} / ${results.total_tests} passed</p>
+      <div class="ops-grid">${rows}</div>`;
   }
 
   function missionThreat(mission) {
@@ -294,6 +363,7 @@ document.addEventListener("DOMContentLoaded", () => {
       currentMissionId = mission.id;
       activeTab = 0;
       draftAnswer = "";
+      testResults = null;
     }
 
     const nodesSecured = (data.cryptogram || []).filter((w) => w.complete).length;
@@ -387,7 +457,24 @@ document.addEventListener("DOMContentLoaded", () => {
         )} COMMAND CENTER LOCKED — TWO SECURITY CLEARANCE STAMPS REQUIRED.</p>`;
       } else {
         challengeHtml += `<p>${escapeHtml(c.prompt)}</p>`;
-        if (c.type === "mcq" && c.options) {
+        if (c.grading_mode === "auto") {
+          if (c.function_signature) {
+            challengeHtml += `<p class="hint-text mono">${icon("terminal", 12)} ${escapeHtml(c.function_signature)}</p>`;
+          }
+          const codeValue = draftAnswer || c.starter_code || "";
+          const attemptsNote =
+            c.max_attempts != null
+              ? `<p class="hint-text">${icon("activity", 12)} Attempts used: ${c.attempts_used} / ${c.max_attempts}</p>`
+              : "";
+          challengeHtml += `
+            <textarea id="code-editor" class="mono" rows="10" spellcheck="false">${escapeHtml(codeValue)}</textarea>
+            ${attemptsNote}
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button id="run-tests" class="ghost" type="button">${icon("scan-line", 13)} Run Visible Tests</button>
+              <button id="submit-challenge">${icon("unlock", 13)} Submit Solution</button>
+            </div>
+            <div id="test-results">${renderTestResults(testResults)}</div>`;
+        } else if (c.type === "mcq" && c.options) {
           challengeHtml += c.options
             .map((opt) => `<button class="challenge-option" data-answer="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`)
             .join("");
@@ -471,12 +558,18 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);
     // Skip the mission panel rebuild while the player is actively typing a
-    // submission — it fully replaces #challenge-answer's DOM node every poll,
-    // wiping out whatever they've typed. Everything else above still updates live.
-    if (document.activeElement && document.activeElement.id === "challenge-answer") {
+    // submission — it fully replaces #challenge-answer/#code-editor's DOM node every
+    // poll, wiping out whatever they've typed. Everything else above still updates live.
+    const activeId = document.activeElement && document.activeElement.id;
+    if (activeId === "challenge-answer" || activeId === "code-editor") {
       return;
     }
     renderMissionPanel(data);
+  }
+
+  if (socket) {
+    socket.on("team_update", refresh);
+    socket.on("event_update", refresh);
   }
 
   refresh();
@@ -646,6 +739,11 @@ document.addEventListener("DOMContentLoaded", () => {
     attachGridSearch(document.getElementById("team-search"), el);
   }
 
+  if (socket) {
+    socket.on("mod_update", refresh);
+    socket.on("event_update", refresh);
+  }
+
   refresh();
   setInterval(refresh, 2000);
 })();
@@ -695,6 +793,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const table = el.querySelector("table.data-table");
     enhanceDataTable(table);
     attachGridSearch(document.getElementById("leaderboard-search"), el);
+  }
+
+  if (socket) {
+    socket.on("event_update", refresh);
   }
 
   refresh();

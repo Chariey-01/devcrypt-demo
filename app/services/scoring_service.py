@@ -36,6 +36,23 @@ class ScoringService:
         team_mission.score += points
         return points
 
+    def score_auto_graded_pass(self, team, team_mission, challenge, grading_result, on_time):
+        # Weighted-percent base, same bonus structure as score_mission_pass, plus a
+        # challenge-configured bonus on top. Kept separate from score_mission_pass so the
+        # legacy manual-review scoring path is untouched.
+        base = round(self.CHALLENGE_COMPLETE * grading_result.percent_score / 100)
+        points = base
+        if not team_mission.hint_used:
+            points += self.NO_HINT_BONUS
+        if on_time:
+            points += self.ON_TIME_BONUS
+        if grading_result.percent_score == 100:
+            points += self.PERFECT_BONUS
+        points += challenge.bonus_points or 0
+        self.award_points(team, points, "auto_graded_pass")
+        team_mission.score += points
+        return points
+
     def apply_retry_penalty(self, team, team_mission):
         team_mission.attempts += 1
         if team_mission.attempts > 1:

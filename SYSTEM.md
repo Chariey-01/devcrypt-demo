@@ -144,7 +144,30 @@ Per section 14's own challenge-type table, only `code` challenges need a human v
 exercise all three: DEPLOY/TOKENS/SCHEMA are `code` (booth agent review), PACKET/INJECT are
 `mcq` (auto), RESTORE is `flag` (auto, final vault).
 
-## 8. Running the whole thing locally to see all four roles interact
+## 8. Agent-managed auto-graded challenges (new)
+
+The `code` challenges above are the legacy path — always human-reviewed, per section 7. An
+Agent (the same `booth_agent` role, no new role added) can now build a second kind of
+challenge through `/agent/dashboard`: a problem statement, starter code, a private solution,
+a scoring config (pass threshold, bonus points, retry limit), and a test suite of
+visible/hidden cases. Saving that content sets `Challenge.grading_mode = "auto"` on the
+mission, which is the one flag every downstream code path checks — nothing else about the
+mission loop changes.
+
+For a team, an `"auto"` mission replaces the free-text answer box with a code editor plus
+**Run Visible Tests** (self-check against only the visible cases) and **Submit Solution**
+(runs the full suite server-side via `GradingEngine`, in a sandboxed subprocess — no human
+in the loop). A pass reuses the exact same `MissionService.complete_mission()` path as
+today's flag/mcq auto-validation: fragment generated, cryptogram tile revealed, team
+advanced to the next mission. Hidden test cases and `Challenge.solution_code` are never
+sent to the browser at any point — see `SYSTEM_DESIGN.md` section 13 for the full design.
+
+An Agent only ever sees and edits missions where `Mission.owner_agent_id` is their own user
+id; the Game Master assigns that ownership from `/mod/` (Agents & Booths panel) and can also
+generate team credentials + QR codes, add team members, and set a team's starting booth
+from the same dashboard — but has no route that can edit a `Challenge`'s content.
+
+## 9. Running the whole thing locally to see all four roles interact
 
 ```bash
 cd devcrypt

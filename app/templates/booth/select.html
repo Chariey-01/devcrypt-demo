@@ -13,6 +13,7 @@
     </button>
     {% endfor %}
   </form>
+  <a class="ghost-link" href="{{ url_for('agent.dashboard') }}">{{ icon('flame-kindling', 13) }} Manage my challenge (Agent Dashboard)</a>
   <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
     <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
   </form>

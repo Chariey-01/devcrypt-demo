@@ -6,6 +6,7 @@ from ..extensions import db
 from ..models import ClearanceStamp, Team
 from ..services.audit_service import AuditService
 from ..services.scoring_service import ScoringService
+from ..sockets import notify_global, notify_mod
 
 security_bp = Blueprint("security", __name__, url_prefix="/security")
 
@@ -60,6 +61,8 @@ def issue_stamp():
     scoring_service.score_checkpoint(team)
     audit_service.log(current_user, "security_officer", "clearance_stamp", "team", team.id)
     db.session.commit()
+    notify_mod("clearance_stamp")
+    notify_global("leaderboard_refresh")
 
     flash(f"Clearance stamp {checkpoint_id} issued to {team.name}.", "success")
     return redirect(url_for("security.dashboard"))

@@ -18,6 +18,10 @@ instance/
 
 # Generated event credentials (plaintext secrets, never commit)
 credentials*.csv
+credentials_qr/
+
+# Facilitator-only answers/flags — never share alongside gameplay code
+answer-sheet.md
 
 # Database
 *.db
@@ -47,4 +51,3 @@ build/
 dist/
 *.egg-info/
 .cache/
-answer-sheet.md

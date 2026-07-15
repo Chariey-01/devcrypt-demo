@@ -461,3 +461,71 @@ The common thread: none of these require touching `MissionService`, `ScoringServ
 `CipherService` — which is the payoff of having enforced the layer boundaries from day one
 rather than letting business logic leak into routes where each new feature would have to
 rediscover the existing rules instead of reusing them.
+
+---
+
+## 13. Agent-Managed Challenge Platform
+
+Section 7 flagged automatic code grading as a deliberate deferral: it needed sandboxed
+execution infrastructure the MVP didn't have yet, so `code`-type challenges always routed
+to a human Booth Agent instead. This section is that deferred work, plus turning challenge
+*authorship* over to each stakeholder's own Agent instead of it being hardcoded in `seed.py`
+— item 7 in Section 12's own future-improvements list ("a custom mission builder").
+
+**The single fork point.** A new `Challenge.grading_mode` column (`"manual_review"` default,
+or `"auto"`) is the one thing every new code path checks. Existing rows — every seeded
+mission — default to `"manual_review"` and are byte-for-byte unaffected: same booth queue,
+same PASS/RETRY/HINT/OVERRIDE buttons, same scoring. `"auto"` is only ever set by an Agent
+explicitly saving a challenge through the new Agent Dashboard.
+
+**New service: `GradingEngine`** (`app/services/grading_service.py`), parallel to
+`ScoringService`/`CipherService` in the layered architecture. It takes a `Challenge` and a
+submitted code string and returns pass/fail per test case — it never touches the ORM or
+knows about HTTP. Isolation is OS-level subprocess confinement: a fresh temp dir per run,
+`subprocess.run()` with a hard wall-clock timeout, and a `preexec_fn` setting `RLIMIT_CPU`/
+`RLIMIT_AS`/`RLIMIT_NPROC` before exec. This is **not** container/namespace isolation —
+appropriate for a supervised booth setting where teams are physically present, not for
+hosting adversarial untrusted code at internet scale. Source-scanning/blocklisting was
+deliberately not used as a security control, since it's trivially bypassable and would be a
+false sense of safety; the rlimits/timeout are the actual boundary.
+
+**New models** (all additive — see the migration in `migrations/versions/`): `TestCase`
+(input/expected-output/weight/visibility per challenge), `Hint` (multiple configurable
+hints, additive alongside the legacy single `Challenge.hint_text`), `CodeSubmission` (one
+row per Run/Submit click, feeding the Game Master's live submissions monitor), `TeamMember`
+(a lightweight roster row — name/email, no password, no session — added without reopening
+Section 4's "teams are not users" decision). `Mission.owner_agent_id` binds a booth to
+exactly one Agent; `Team.starting_mission_id` lets the Game Master rotate a team's starting
+booth while keeping the highest-`order_index` mission (the final vault) always last,
+regardless of rotation.
+
+**New blueprint: `agent.py`**, separate from `booth.py`. `booth.py` is unchanged — it's
+still the live-event review queue. `agent.py` is the pre-event content-authoring surface:
+CRUD on a mission's `Challenge`/`TestCase`/`Hint`/supporting files, scoped so an Agent can
+only ever touch a `Mission` where `owner_agent_id` matches their own user id (a 404, not a
+403, on someone else's booth — an Agent shouldn't be able to tell another stakeholder's
+booth exists). `Challenge.solution_code` is server-side-only and never appears in any
+player-facing serializer.
+
+**Player-facing changes are additive to `missions.py`.** `_serialize_challenge()` only adds
+`starter_code`/`language`/`function_signature` when `grading_mode == "auto"`. A new
+`POST /missions/challenge/run-tests` route runs only `TestCase.visibility == "visible"` rows
+— hidden tests are never fetched, let alone serialized, on that path. `submit_challenge()`
+gained one new branch at the top, gated on `grading_mode == "auto"`; the existing
+`manual_review` branch below it is untouched. Both branches still end by calling
+`MissionService.complete_mission()`, which gained an optional `grading_result` parameter —
+when present it calls the new `ScoringService.score_auto_graded_pass()` (weighted-percent
+scoring against `Challenge.pass_threshold`, plus the challenge's configured `bonus_points`)
+instead of the flat `score_mission_pass()`. Fragment generation, `booth_current`
+advancement, and audit logging are the same code path either way.
+
+**Game Master additions extend `mod.py`**, not fork it: team/member CRUD, credential + QR
+generation (wrapping the key-generation logic already in `generate_credentials.py`, now
+factored into `app/services/credential_service.py` so both the CLI script and the web routes
+import the same functions instead of duplicating them), an Agents & Booths overview, a live
+`CodeSubmission` feed, an explicit score-override route (distinct from the existing
+pass/overridden status override), and `EventState.status` gaining two new values — `draft`
+(brand-new installs only; existing deployments' EventState row is untouched) and `archived`
+— read by every existing `status != "running"` check with no new branches needed. The Game
+Master deliberately has no route that writes to `Challenge` fields; that boundary is
+enforced by omission, not a runtime check that could be forgotten later.
