@@ -15,6 +15,9 @@ try:
 except ImportError:
     pass
 
+import logging
+import os
+
 from flask import Flask, render_template
 
 from .config import Config
@@ -33,7 +36,21 @@ from .icons import icon
 from . import sockets  # noqa: F401 — registers the @socketio.on("connect") handler
 
 
+def _configure_logging():
+    # logging.basicConfig() is a no-op once the root logger already has a handler — safe to call
+    # on every create_app() (tests construct the app repeatedly) without stacking duplicate
+    # handlers. This also means Flask's own default exception logging (unhandled 500s, logged via
+    # app.logger.error(..., exc_info=...) in Flask's handle_exception) picks up this format/level
+    # for free, since Flask only attaches its own default handler when no handler is found
+    # anywhere up the logger chain.
+    logging.basicConfig(
+        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
 def create_app(config_class=Config):
+    _configure_logging()
     app = Flask(__name__)
     app.config.from_object(config_class)
 

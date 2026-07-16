@@ -1,8 +1,13 @@
+import logging
+
+from flask import request
 from flask_login import current_user
 from flask_socketio import join_room
 
 from .decorators import current_team
 from .extensions import socketio
+
+logger = logging.getLogger("devcrypt.sockets")
 
 # Push-triggers-refresh, not push-carries-state: every emit below is a bare "something changed,
 # go refetch" ping with no game-state payload. The browser responds by calling the exact same
@@ -18,8 +23,18 @@ def handle_connect():
     team = current_team()
     if team:
         join_room(f"team-{team.id}")
+        logger.info("socket connect sid=%s team=%r", request.sid, team.name)
+    elif current_user.is_authenticated:
+        logger.info("socket connect sid=%s user=%r role=%s", request.sid, current_user.email, current_user.role)
+    else:
+        logger.info("socket connect sid=%s anonymous", request.sid)
     if current_user.is_authenticated and current_user.role == "game_master":
         join_room("mod")
+
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    logger.info("socket disconnect sid=%s", request.sid)
 
 
 def notify_team(team_id, event_type):
