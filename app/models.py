@@ -84,6 +84,9 @@ class Mission(db.Model):
     # NULL = unowned, staffed the legacy way via /booth/select. Set = this mission is a
     # stakeholder booth managed exclusively by that Agent (see app/blueprints/agent.py).
     owner_agent_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    # "draft" (agent-authoring, invisible to players) | "published" (default — every mission
+    # created before this field existed stays visible with zero behavior change) | "archived".
+    status = db.Column(db.String(20), default="published", nullable=False)
 
     evidence_files = db.relationship("EvidenceFile", backref="mission", cascade="all, delete-orphan")
     mcqs = db.relationship("MCQ", backref="mission", cascade="all, delete-orphan", order_by="MCQ.order_index")
@@ -157,6 +160,9 @@ class Challenge(db.Model):
     max_attempts = db.Column(db.Integer, nullable=True)
     bonus_points = db.Column(db.Integer, default=0)
     time_limit_seconds = db.Column(db.Integer, default=5)
+    # Agent-declared, optional. "easy" | "medium" | "hard" — display/filter hint only, no
+    # behavioral coupling (distinct from the empirically-observed pass-rate shown in Analytics).
+    difficulty = db.Column(db.String(20), nullable=True)
 
     test_cases = db.relationship(
         "TestCase", backref="challenge", cascade="all, delete-orphan", order_by="TestCase.order_index"
@@ -306,3 +312,10 @@ class EventState(db.Model):
     started_at = db.Column(db.DateTime, nullable=True)
     broadcast_message = db.Column(db.String(255), nullable=True)
     broadcast_at = db.Column(db.DateTime, nullable=True)
+    name = db.Column(db.String(120), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    hint_limit = db.Column(db.Integer, default=3, nullable=False)
+    leaderboard_public = db.Column(db.Boolean, default=True, nullable=False)
+    # Emergency kill-switch: when set, auto-graded submissions route to the manual-review queue
+    # instead of executing code — a safety valve if the grading sandbox misbehaves mid-event.
+    auto_grading_disabled = db.Column(db.Boolean, default=False, nullable=False)
