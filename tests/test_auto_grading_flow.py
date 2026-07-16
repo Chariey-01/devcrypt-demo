@@ -145,6 +145,23 @@ def test_submission_produces_a_queryable_event_log_row(client, app):
         assert "passed" in graded.event_metadata
 
 
+def test_status_includes_mission_timeline(client, app):
+    _setup_auto_graded_mission(app)
+    _login_team(client)
+
+    status = client.get("/missions/status").get_json()
+    timeline = status["timeline"]
+    assert [t["title"] for t in timeline] == ["Doubler Node", "Trailing Node"]
+    assert timeline[0]["status"] == "current"
+    assert timeline[1]["status"] == "not_started"
+
+    client.post("/missions/challenge/submit", json={"code": "print(int(input()) * 2)"})
+    status = client.get("/missions/status").get_json()
+    timeline = status["timeline"]
+    assert timeline[0]["status"] == "passed"
+    assert timeline[1]["status"] == "current"
+
+
 def test_draft_mission_is_invisible_to_players(client, app):
     mission_id, team_id = _setup_auto_graded_mission(app)
     with app.app_context():

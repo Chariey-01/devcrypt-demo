@@ -113,7 +113,23 @@ def status():
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
+    # Compact per-booth progress sequence for the player's mission timeline UI — purely
+    # additive JSON key, doesn't touch any existing key.
+    team_missions_by_mission_id = {tm.mission_id: tm for tm in team.team_missions}
+    current_mission_id = mission.id if mission is not None else None
+    timeline = []
+    for m in missions:
+        existing = team_missions_by_mission_id.get(m.id)
+        if existing and existing.status in ("passed", "overridden"):
+            tl_status = existing.status
+        elif m.id == current_mission_id:
+            tl_status = "current"
+        else:
+            tl_status = "not_started"
+        timeline.append({"mission_id": m.id, "title": m.title, "status": tl_status})
+
     payload = {
+        "timeline": timeline,
         "event_status": state.status,
         "broadcast": (
             {"message": state.broadcast_message, "at": state.broadcast_at.isoformat()}

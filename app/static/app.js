@@ -499,6 +499,17 @@ document.addEventListener("DOMContentLoaded", () => {
       ? "Await field agent review."
       : "Complete the mission action to secure this node.";
 
+    const timelineHtml = (data.timeline || [])
+      .map(
+        (t, i, arr) => `
+      <div class="mission-timeline-node ${t.status}">
+        <span class="status-dot ${t.status === "current" ? "" : "off"}"></span>
+        <span class="mission-timeline-label">${escapeHtml(t.title)}</span>
+      </div>
+      ${i < arr.length - 1 ? '<div class="mission-timeline-connector"></div>' : ""}`
+      )
+      .join("");
+
     panel.innerHTML = `
       <div class="mission-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
         <div>
@@ -507,6 +518,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         <span class="classified-tag">${icon("unlock", 12)} ACTIVE</span>
       </div>
+      <div class="mission-timeline">${timelineHtml}</div>
       <p>${escapeHtml(mission.narrative)}</p>
       ${opsGridHtml}
       <div class="tabs">${tabsHtml}</div>
