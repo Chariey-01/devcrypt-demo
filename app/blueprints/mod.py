@@ -444,6 +444,82 @@ def export_csv():
     return response
 
 
+@mod_bp.route("/export/submissions.csv")
+@login_required
+@roles_required("game_master")
+def export_submissions_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["team", "mission", "mode", "total_tests", "passed_tests", "percent_score", "passed", "created_at"])
+    subs = (
+        CodeSubmission.query.join(TeamMission, CodeSubmission.team_mission_id == TeamMission.id)
+        .order_by(CodeSubmission.created_at)
+        .all()
+    )
+    for s in subs:
+        writer.writerow(
+            [
+                s.team_mission.team.name,
+                s.team_mission.mission.title,
+                s.mode,
+                s.total_tests,
+                s.passed_tests,
+                s.percent_score,
+                s.passed,
+                s.created_at.isoformat(),
+            ]
+        )
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=devcrypt_submissions.csv"
+    return response
+
+
+@mod_bp.route("/export/challenges.csv")
+@login_required
+@roles_required("game_master")
+def export_challenges_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["mission", "difficulty", "grading_mode", "attempts", "passed", "pass_rate_percent"])
+    stats_by_mission = {s["mission_id"]: s for s in analytics_service.challenge_stats()}
+    for mission in Mission.query.order_by(Mission.order_index).all():
+        challenge = mission.challenge
+        stat = stats_by_mission.get(mission.id)
+        writer.writerow(
+            [
+                mission.title,
+                challenge.difficulty if challenge else "",
+                challenge.grading_mode if challenge else "",
+                stat["attempts"] if stat else 0,
+                stat["passed"] if stat else 0,
+                stat["pass_rate"] if stat else "",
+            ]
+        )
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=devcrypt_challenges.csv"
+    return response
+
+
+@mod_bp.route("/export/event-stats.csv")
+@login_required
+@roles_required("game_master")
+def export_event_stats_csv():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    pass_fail = analytics_service.pass_fail_counts()
+    hint_usage = analytics_service.hint_usage()
+    writer.writerow(["metric", "value"])
+    writer.writerow(["total_submissions", analytics_service.total_submissions()])
+    writer.writerow(["submissions_passed", pass_fail["passed"]])
+    writer.writerow(["submissions_failed", pass_fail["failed"]])
+    writer.writerow(["average_completion_seconds", analytics_service.average_completion_seconds() or ""])
+    writer.writerow(["total_hints_used", hint_usage["total_hints_used"]])
+    writer.writerow(["missions_with_hint_used", hint_usage["missions_with_hint_used"]])
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=devcrypt_event_stats.csv"
+    return response
+
+
 @mod_bp.route("/analytics")
 @login_required
 @roles_required("game_master")

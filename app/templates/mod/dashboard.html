@@ -24,6 +24,9 @@
       <button type="submit" class="danger">{{ icon('siren', 13) }} Terminate Event</button>
     </form>
     <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">{{ icon('database', 13) }} Export CSV</a>
+    <a class="ghost-link" href="{{ url_for('mod.export_submissions_csv') }}">{{ icon('database', 13) }} Export Submissions</a>
+    <a class="ghost-link" href="{{ url_for('mod.export_challenges_csv') }}">{{ icon('database', 13) }} Export Challenges</a>
+    <a class="ghost-link" href="{{ url_for('mod.export_event_stats_csv') }}">{{ icon('database', 13) }} Export Event Stats</a>
     <a class="ghost-link" href="{{ url_for('mod.analytics') }}">{{ icon('gauge', 13) }} Analytics</a>
   </section>
 
