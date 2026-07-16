@@ -112,8 +112,9 @@
     document.getElementById("create-team-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       try {
-        await api("POST", "/mod/team", { name: fd.get("name") });
+        await withLoadingButton(submitBtn, "Creating&hellip;", () => api("POST", "/mod/team", { name: fd.get("name") }));
         await loadAll();
         flash("Team created.");
       } catch (err) {

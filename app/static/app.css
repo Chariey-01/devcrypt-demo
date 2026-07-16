@@ -507,6 +507,12 @@ button:disabled {
   color: var(--neon);
 }
 
+.flash-info {
+  background: rgba(34, 211, 238, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Live submission alert bar — booth + security dashboards */
 
 .alert-bar {

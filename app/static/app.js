@@ -34,6 +34,22 @@ function escapeHtml(value) {
   return div.innerHTML;
 }
 
+// Disables `btn` and (optionally) swaps its label for the duration of `fn`, always restoring
+// both in a finally block — the one loading-button pattern already established in this codebase
+// (originally just the challenge-submit button), generalized so other fetch-triggered buttons
+// can reuse it instead of each hand-rolling the same disable/restore dance.
+async function withLoadingButton(btn, loadingLabel, fn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  if (loadingLabel) btn.innerHTML = loadingLabel;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
 function fmtClock(totalSeconds) {
   const s = Math.max(0, Math.floor(totalSeconds));
   const m = Math.floor(s / 60);
@@ -225,63 +241,57 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const runTestsBtn = panel.querySelector("#run-tests");
     if (runTestsBtn) {
-      runTestsBtn.addEventListener("click", async () => {
-        const code = panel.querySelector("#code-editor").value;
-        runTestsBtn.disabled = true;
-        const res = await api("/missions/challenge/run-tests", {
-          method: "POST",
-          body: JSON.stringify({ code }),
-        });
-        runTestsBtn.disabled = false;
-        if (res.ok) {
-          testResults = res.data;
-          const resultsEl = panel.querySelector("#test-results");
-          if (resultsEl) resultsEl.innerHTML = renderTestResults(testResults);
-        } else {
-          showMessage(res.data.error);
-        }
-      });
+      runTestsBtn.addEventListener("click", () =>
+        withLoadingButton(runTestsBtn, "Testing&hellip;", async () => {
+          const code = panel.querySelector("#code-editor").value;
+          const res = await api("/missions/challenge/run-tests", {
+            method: "POST",
+            body: JSON.stringify({ code }),
+          });
+          if (res.ok) {
+            testResults = res.data;
+            const resultsEl = panel.querySelector("#test-results");
+            if (resultsEl) resultsEl.innerHTML = renderTestResults(testResults);
+          } else {
+            showMessage(res.data.error);
+          }
+        })
+      );
     }
 
     const submitBtn = panel.querySelector("#submit-challenge");
     if (submitBtn) {
-      submitBtn.addEventListener("click", async () => {
-        const value = panel.querySelector("#challenge-answer, #code-editor").value;
+      submitBtn.addEventListener("click", () =>
         // Grading runs server-side and can legitimately take several seconds under peak event
         // load (many teams submitting at once all contend for the same sandboxed-subprocess
         // CPU budget) — disable + relabel so a slow grading run reads as "working," not "did
         // my click register?", and so a player can't fire a second submission (and burn an
         // extra attempt against max_attempts) while the first is still in flight.
-        submitBtn.disabled = true;
-        const originalLabel = submitBtn.innerHTML;
-        submitBtn.innerHTML = "Grading&hellip;";
-        let res;
-        try {
-          res = await api("/missions/challenge/submit", {
+        withLoadingButton(submitBtn, "Grading&hellip;", async () => {
+          const value = panel.querySelector("#challenge-answer, #code-editor").value;
+          const res = await api("/missions/challenge/submit", {
             method: "POST",
             body: JSON.stringify({ answer: value, code: value }),
           });
-        } finally {
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = originalLabel;
-        }
-        draftAnswer = "";
-        testResults = null;
-        const detail =
-          res.data.percent_score !== undefined
-            ? ` (${res.data.passed_tests}/${res.data.total_tests} tests, ${res.data.percent_score}%)`
-            : "";
-        showMessage((res.data.message || res.data.error) + detail);
-        await refresh();
-      });
+          draftAnswer = "";
+          testResults = null;
+          const detail =
+            res.data.percent_score !== undefined
+              ? ` (${res.data.passed_tests}/${res.data.total_tests} tests, ${res.data.percent_score}%)`
+              : "";
+          showMessage((res.data.message || res.data.error) + detail);
+          await refresh();
+        })
+      );
     }
 
     const hintBtn = panel.querySelector("#request-hint");
     if (hintBtn) {
       hintBtn.addEventListener("click", async () => {
+        const hintLimit = data.team.hints_used + data.team.hints_remaining;
         if (
           !confirm(
-            "Request a hint? Costs 15 points and 10% integrity, and uses one of your team's 3 event-wide hints."
+            `Request a hint? Costs 15 points and 10% integrity, and uses one of your team's ${hintLimit} event-wide hints.`
           )
         )
           return;
@@ -410,7 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const tabsHtml = mission.evidence_files
       .map(
         (e, i) =>
-          `<button class="tab ${i === activeTab ? "active" : ""}" data-tab="${i}">${icon(
+          `<button class="tab ${i === activeTab ? "active" : ""}" role="tab" aria-selected="${i === activeTab}" data-tab="${i}">${icon(
             "file-lock-2",
             12
           )} ${escapeHtml(e.label)}</button>`
@@ -521,7 +531,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="mission-timeline">${timelineHtml}</div>
       <p>${escapeHtml(mission.narrative)}</p>
       ${opsGridHtml}
-      <div class="tabs">${tabsHtml}</div>
+      <div class="tabs" role="tablist">${tabsHtml}</div>
       <div class="evidence-content">${evidenceContent}</div>
       <div id="mcq-stage">${mcqHtml}</div>
       <div id="challenge-stage">${challengeHtml}</div>

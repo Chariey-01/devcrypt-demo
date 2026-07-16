@@ -183,11 +183,11 @@
           ? `<p class="hint-text">${icon("eye", 13)} Draft booths are invisible to players until published.</p>`
           : ""
       }
-      <div class="tabs">
+      <div class="tabs" role="tablist">
         ${tabs
           .map(
             ([key, label]) =>
-              `<button type="button" class="tab ${activeTab === key ? "active" : ""}" data-tab="${key}">${escapeHtml(label)}</button>`
+              `<button type="button" class="tab ${activeTab === key ? "active" : ""}" role="tab" aria-selected="${activeTab === key}" data-tab="${key}">${escapeHtml(label)}</button>`
           )
           .join("")}
       </div>
@@ -279,19 +279,22 @@
     document.getElementById("challenge-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const submitBtn = e.target.querySelector('button[type="submit"]');
       try {
-        selected = await api("PUT", `/agent/missions/${selected.id}/challenge`, {
-          title: fd.get("title"),
-          prompt: fd.get("prompt"),
-          language: fd.get("language"),
-          function_signature: fd.get("function_signature"),
-          starter_code: fd.get("starter_code"),
-          solution_code: fd.get("solution_code"),
-          pass_threshold: Number(fd.get("pass_threshold") || 100),
-          bonus_points: Number(fd.get("bonus_points") || 0),
-          max_attempts: fd.get("max_attempts") ? Number(fd.get("max_attempts")) : null,
-          time_limit_seconds: Number(fd.get("time_limit_seconds") || 5),
-          difficulty: fd.get("difficulty") || null,
+        await withLoadingButton(submitBtn, "Saving&hellip;", async () => {
+          selected = await api("PUT", `/agent/missions/${selected.id}/challenge`, {
+            title: fd.get("title"),
+            prompt: fd.get("prompt"),
+            language: fd.get("language"),
+            function_signature: fd.get("function_signature"),
+            starter_code: fd.get("starter_code"),
+            solution_code: fd.get("solution_code"),
+            pass_threshold: Number(fd.get("pass_threshold") || 100),
+            bonus_points: Number(fd.get("bonus_points") || 0),
+            max_attempts: fd.get("max_attempts") ? Number(fd.get("max_attempts")) : null,
+            time_limit_seconds: Number(fd.get("time_limit_seconds") || 5),
+            difficulty: fd.get("difficulty") || null,
+          });
         });
         await loadMissions();
         flash("Challenge saved.");
