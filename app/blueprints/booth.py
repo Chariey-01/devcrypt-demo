@@ -8,6 +8,7 @@ from ..extensions import db
 from ..models import Mission, TeamMission
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
+from ..services.event_service import EventService
 from ..services.mission_service import MissionService
 from ..services.scoring_service import ScoringService
 
@@ -17,6 +18,7 @@ scoring_service = ScoringService()
 cipher_service = CipherService()
 audit_service = AuditService()
 mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
+event_service = EventService()
 
 
 @booth_bp.route("/select", methods=["GET", "POST"])
@@ -79,13 +81,14 @@ def queue_data():
         .filter(TeamMission.submission_text.isnot(None))
         .all()
     )
+    hint_limit = event_service.get_state().hint_limit
     rows = [
         {
             "team_mission_id": tm.id,
             "team": tm.team.name,
             "submission": tm.submission_text,
             "attempts": tm.attempts,
-            "hints_remaining": max(0, 3 - tm.team.hints_used),
+            "hints_remaining": max(0, hint_limit - tm.team.hints_used),
         }
         for tm in pending
     ]

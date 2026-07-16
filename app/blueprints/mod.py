@@ -3,7 +3,7 @@ import csv
 import io
 from datetime import datetime
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from ..decorators import roles_required
@@ -51,11 +51,13 @@ def data():
     # dashboard's "current mission" column never shows a draft mission a team can't actually
     # reach (mod.py:99's list_missions is intentionally unfiltered — GMs manage drafts too).
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    total_missions = len(missions)
     rows = []
     for team in teams:
         missions_done = sum(1 for tm in team.team_missions if tm.status in ("passed", "overridden"))
         overridden = any(tm.status == "overridden" for tm in team.team_missions)
         current, _ = mission_service.current_mission_for(team, missions)
+        finished = total_missions and missions_done >= total_missions
         rows.append(
             {
                 "id": team.id,
@@ -67,7 +69,7 @@ def data():
                 "fragments": len(team.fragments),
                 "clearance": len(team.clearance_stamps),
                 "hints_used": team.hints_used,
-                "status": "finished" if missions_done >= 6 else ("overridden" if overridden else "active"),
+                "status": "finished" if finished else ("overridden" if overridden else "active"),
                 "elapsed": (datetime.utcnow() - team.created_at).total_seconds(),
                 "starting_mission_id": team.starting_mission_id,
                 "members": [{"id": m.id, "name": m.name, "email": m.email} for m in team.members],
@@ -79,6 +81,7 @@ def data():
             "teams": rows,
             "event_status": state.status,
             "broadcast": state.broadcast_message,
+            "total_missions": total_missions,
         }
     )
 
@@ -344,6 +347,29 @@ def reset_mission(team_mission_id):
     notify_team(team_mission.team_id, "mission_reset")
     notify_mod("mission_reset")
     return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
+
+
+@mod_bp.route("/event-settings", methods=["GET", "POST"])
+@login_required
+@roles_required("game_master")
+def event_settings():
+    state = event_service.get_state()
+    if request.method == "POST":
+        state.name = (request.form.get("name") or "").strip() or None
+        state.description = (request.form.get("description") or "").strip() or None
+        try:
+            state.hint_limit = max(0, int(request.form.get("hint_limit", state.hint_limit)))
+        except (TypeError, ValueError):
+            pass
+        state.leaderboard_public = request.form.get("leaderboard_public") == "on"
+        state.auto_grading_disabled = request.form.get("auto_grading_disabled") == "on"
+        audit_service.log(current_user, "game_master", "event_settings_updated")
+        db.session.commit()
+        flash("Event settings saved.", "success")
+        return redirect(url_for("mod.event_settings"))
+
+    total_booths = Mission.query.filter_by(status="published").count()
+    return render_template("mod/event_settings.html", state=state, total_booths=total_booths)
 
 
 @mod_bp.route("/event/publish", methods=["POST"])

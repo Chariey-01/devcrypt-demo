@@ -713,8 +713,8 @@ document.addEventListener("DOMContentLoaded", () => {
               <td>${t.score}</td>
               <td>${t.integrity}%</td>
               <td>${escapeHtml(t.current_mission)}</td>
-              <td>${t.fragments}/6</td>
-              <td>${t.clearance}/2</td>
+              <td>${t.fragments}/${data.total_missions || 0}</td>
+              <td>${t.clearance}</td>
               <td><span class="badge badge-${t.status}">${t.status}</span></td>
               <td><a class="ghost-link" href="/mod/team/${t.id}">${icon("eye", 12)} Detail</a></td>
             </tr>`
@@ -746,8 +746,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function refresh() {
     const res = await api("/leaderboard/data");
-    const rows = res.data.leaderboard || [];
     const el = document.getElementById("leaderboard-table");
+    if (res.data.hidden) {
+      el.innerHTML = `<p class="hint-text">${icon("lock-keyhole", 13)} The leaderboard is hidden for this event.</p>`;
+      return;
+    }
+    const rows = res.data.leaderboard || [];
+    const totalMissions = res.data.total_missions || 0;
     el.innerHTML = `
       <table class="data-table">
         <thead>
@@ -770,8 +775,8 @@ document.addEventListener("DOMContentLoaded", () => {
               <td>${r.score}</td>
               <td>${r.integrity}%</td>
               <td>${escapeHtml(r.current_mission)}</td>
-              <td>${r.fragments}/6</td>
-              <td>${r.clearance}/2</td>
+              <td>${r.fragments}/${totalMissions}</td>
+              <td>${r.clearance}</td>
               <td><span class="badge badge-${r.status}">${r.status}</span></td>
             </tr>`
             )

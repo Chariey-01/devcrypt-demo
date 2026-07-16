@@ -3,10 +3,12 @@ from datetime import datetime
 from flask import Blueprint, jsonify, render_template
 
 from ..models import Mission, Team
+from ..services.event_service import EventService
 from ..services.mission_service import MissionService
 
 leaderboard_bp = Blueprint("leaderboard", __name__, url_prefix="/leaderboard")
 mission_service = MissionService()
+event_service = EventService()
 
 
 @leaderboard_bp.route("/")
@@ -16,14 +18,18 @@ def leaderboard():
 
 @leaderboard_bp.route("/data")
 def data():
+    if not event_service.get_state().leaderboard_public:
+        return jsonify({"hidden": True, "leaderboard": []})
+
     teams = Team.query.all()
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    total_missions = len(missions)
     rows = []
     for team in teams:
         missions_done = [tm for tm in team.team_missions if tm.status in ("passed", "overridden")]
         overridden = any(tm.status == "overridden" for tm in team.team_missions)
         current, _ = mission_service.current_mission_for(team, missions)
-        if len(missions_done) >= 6:
+        if total_missions and len(missions_done) >= total_missions:
             status = "finished"
             current_mission = "Metaverse Core Restored"
         elif overridden:
@@ -50,4 +56,4 @@ def data():
     for index, row in enumerate(rows, start=1):
         row["rank"] = index
 
-    return jsonify({"leaderboard": rows})
+    return jsonify({"leaderboard": rows, "total_missions": total_missions})

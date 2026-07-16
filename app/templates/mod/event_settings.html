@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Event Settings — DevCrypt{% endblock %}
+{% block content %}
+<main class="shell mod">
+  <header class="topbar">
+    <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
+    <span class="pill">{{ icon('terminal', 13) }} Event Settings</span>
+    <a class="ghost-link" href="{{ url_for('mod.dashboard') }}">&larr; Back to dashboard</a>
+  </header>
+
+  <p class="hint-text">{{ icon('network', 13) }} Total published booths: <strong>{{ total_booths }}</strong> (derived from
+    published missions — manage booths from the Agent Dashboard or booth assignment, not here).</p>
+
+  <form method="post" class="auth-form" style="max-width:32rem;">
+    <label>Event name
+      <input type="text" name="name" value="{{ state.name or '' }}" placeholder="e.g. DevCrypt Career Fair 2026">
+    </label>
+    <label>Event description
+      <textarea name="description" rows="2" placeholder="Shown to staff, optional">{{ state.description or '' }}</textarea>
+    </label>
+    <label>Hint limit (per team, for the whole event)
+      <input type="number" name="hint_limit" min="0" value="{{ state.hint_limit }}">
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;flex-direction:row;">
+      <input type="checkbox" name="leaderboard_public" {{ 'checked' if state.leaderboard_public else '' }} style="width:auto;">
+      Public leaderboard visible (staff dashboards are never affected by this)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;flex-direction:row;">
+      <input type="checkbox" name="auto_grading_disabled" {{ 'checked' if state.auto_grading_disabled else '' }} style="width:auto;">
+      {{ icon('siren', 13) }} Emergency: disable automated grading (routes auto-graded submissions to manual review instead)
+    </label>
+    <button type="submit">{{ icon('check', 13) }} Save Settings</button>
+  </form>
+</main>
+{% endblock %}

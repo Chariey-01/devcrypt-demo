@@ -125,7 +125,7 @@ def status():
             "score": team.score,
             "integrity": team.integrity,
             "hints_used": team.hints_used,
-            "hints_remaining": max(0, 3 - team.hints_used),
+            "hints_remaining": max(0, state.hint_limit - team.hints_used),
         },
         "cryptogram": cipher_service.board_state(team, missions),
         "fragments": [
@@ -252,8 +252,13 @@ def submit_challenge():
 
     data = request.get_json(silent=True) or {}
     answer = data.get("answer", request.form.get("answer", ""))
+    # Auto-graded submissions arrive as {"code": ...}, not {"answer": ...} — folding it in here
+    # (rather than only inside the "auto" branch below) means the manual-review fallback below
+    # still captures the actual submitted code when auto_grading_disabled reroutes an
+    # otherwise-auto-graded challenge into that path, instead of silently discarding it.
+    answer = data.get("code", answer)
 
-    if challenge.grading_mode == "auto":
+    if challenge.grading_mode == "auto" and not state.auto_grading_disabled:
         if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
             return jsonify({"error": "No attempts remaining for this challenge."}), 403
 
@@ -347,7 +352,8 @@ def submit_challenge():
 @team_required
 def request_hint():
     team = current_team()
-    if team.hints_used >= 3:
+    state = event_service.get_state()
+    if team.hints_used >= state.hint_limit:
         return jsonify({"error": "No hints remaining for this event."}), 403
 
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
@@ -380,6 +386,8 @@ def run_visible_tests():
     challenge = mission.challenge
     if challenge is None or challenge.grading_mode != "auto":
         return jsonify({"error": "This challenge does not support test runs."}), 400
+    if state.auto_grading_disabled:
+        return jsonify({"error": "Automated grading is temporarily disabled — a Booth Agent will review submissions manually."}), 503
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
     data = request.get_json(silent=True) or {}
