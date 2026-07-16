@@ -66,26 +66,33 @@
     renderEditor();
   }
 
+  const STATUS_BADGE = {
+    draft: { cls: "badge-not_started", label: "Draft" },
+    published: { cls: "badge-passed", label: "Published" },
+    archived: { cls: "badge-overridden", label: "Archived" },
+  };
+
   function renderMissionList() {
     const el = document.getElementById("agent-mission-list");
     const cards = missions
-      .map(
-        (m) => `
+      .map((m) => {
+        const status = STATUS_BADGE[m.status] || STATUS_BADGE.draft;
+        return `
       <div class="card" style="margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
           <div>
             <strong>${icon("server", 14)} ${escapeHtml(m.title)}</strong>
-            <span class="badge ${m.grading_mode === "auto" ? "badge-passed" : "badge-not_started"}">
-              ${m.grading_mode === "auto" ? "Auto-graded" : "No challenge yet"}
-            </span>
+            <span class="badge ${status.cls}">${status.label}</span>
+            ${m.grading_mode !== "auto" ? `<span class="badge badge-not_started">No challenge yet</span>` : ""}
           </div>
-          <div style="display:flex;gap:0.4rem;">
+          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
             <button type="button" data-select="${m.id}">${icon("terminal", 13)} Manage</button>
+            <button type="button" class="ghost" data-duplicate="${m.id}">${icon("network", 13)} Duplicate</button>
             <button type="button" class="danger" data-delete="${m.id}">${icon("x", 13)} Delete</button>
           </div>
         </div>
-      </div>`
-      )
+      </div>`;
+      })
       .join("");
 
     el.innerHTML = `
@@ -102,6 +109,18 @@
 
     el.querySelectorAll("[data-select]").forEach((btn) => {
       btn.addEventListener("click", () => selectMission(Number(btn.dataset.select)));
+    });
+    el.querySelectorAll("[data-duplicate]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          const copy = await api("POST", `/agent/missions/${btn.dataset.duplicate}/duplicate`);
+          await loadMissions();
+          await selectMission(copy.id);
+          flash("Booth duplicated as a draft — review and publish when ready.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
     });
     el.querySelectorAll("[data-delete]").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -143,9 +162,27 @@
       ["tests", "Test Suite"],
       ["hints", "Hints"],
       ["assets", "Files"],
+      ["preview", "Preview"],
     ];
+    const status = STATUS_BADGE[selected.status] || STATUS_BADGE.draft;
+    const lifecycleActions =
+      selected.status === "published"
+        ? `<button type="button" class="ghost" id="lifecycle-unpublish">${icon("lock-keyhole", 13)} Unpublish</button>
+           <button type="button" class="ghost" id="lifecycle-archive">${icon("x", 13)} Archive</button>`
+        : selected.status === "archived"
+        ? `<button type="button" id="lifecycle-publish">${icon("unlock", 13)} Publish</button>`
+        : `<button type="button" id="lifecycle-publish">${icon("unlock", 13)} Publish</button>
+           <button type="button" class="ghost" id="lifecycle-archive">${icon("x", 13)} Archive</button>`;
     el.innerHTML = `
-      <p class="section-heading">${icon("crosshair", 14)} Editing: ${escapeHtml(selected.title)}</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+        <p class="section-heading">${icon("crosshair", 14)} Editing: ${escapeHtml(selected.title)} <span class="badge ${status.cls}">${status.label}</span></p>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">${lifecycleActions}</div>
+      </div>
+      ${
+        selected.status === "draft"
+          ? `<p class="hint-text">${icon("eye", 13)} Draft booths are invisible to players until published.</p>`
+          : ""
+      }
       <div class="tabs">
         ${tabs
           .map(
@@ -162,11 +199,40 @@
         renderEditor();
       });
     });
+    const publishBtn = document.getElementById("lifecycle-publish");
+    if (publishBtn) {
+      publishBtn.addEventListener("click", async () => {
+        try {
+          selected = await api("POST", `/agent/missions/${selected.id}/publish`);
+          await loadMissions();
+          flash("Booth published — now visible to players.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    }
+    const unpublishBtn = document.getElementById("lifecycle-unpublish");
+    if (unpublishBtn) {
+      unpublishBtn.addEventListener("click", async () => {
+        selected = await api("POST", `/agent/missions/${selected.id}/unpublish`);
+        await loadMissions();
+        flash("Booth unpublished — hidden from players again.");
+      });
+    }
+    const archiveBtn = document.getElementById("lifecycle-archive");
+    if (archiveBtn) {
+      archiveBtn.addEventListener("click", async () => {
+        selected = await api("POST", `/agent/missions/${selected.id}/archive`);
+        await loadMissions();
+        flash("Booth archived.");
+      });
+    }
     const content = document.getElementById("agent-tab-content");
     if (activeTab === "challenge") renderChallengeTab(content);
     else if (activeTab === "tests") renderTestsTab(content);
     else if (activeTab === "hints") renderHintsTab(content);
     else if (activeTab === "assets") renderAssetsTab(content);
+    else if (activeTab === "preview") renderPreviewTab(content);
   }
 
   function renderChallengeTab(el) {
@@ -199,6 +265,14 @@
           <label>Max attempts<input type="number" name="max_attempts" min="1" value="${c.max_attempts ?? ""}" placeholder="Unlimited"></label>
           <label>Per-test timeout (s)<input type="number" name="time_limit_seconds" min="1" max="30" value="${c.time_limit_seconds ?? 5}"></label>
         </div>
+        <label>Difficulty
+          <select name="difficulty">
+            <option value="" ${!c.difficulty ? "selected" : ""}>Not set</option>
+            <option value="easy" ${c.difficulty === "easy" ? "selected" : ""}>Easy</option>
+            <option value="medium" ${c.difficulty === "medium" ? "selected" : ""}>Medium</option>
+            <option value="hard" ${c.difficulty === "hard" ? "selected" : ""}>Hard</option>
+          </select>
+        </label>
         <button type="submit">${icon("check", 13)} Save Challenge</button>
       </form>
     `;
@@ -217,6 +291,7 @@
           bonus_points: Number(fd.get("bonus_points") || 0),
           max_attempts: fd.get("max_attempts") ? Number(fd.get("max_attempts")) : null,
           time_limit_seconds: Number(fd.get("time_limit_seconds") || 5),
+          difficulty: fd.get("difficulty") || null,
         });
         await loadMissions();
         flash("Challenge saved.");
@@ -441,6 +516,46 @@
       });
       await refreshSelected();
     });
+  }
+
+  // Read-only simulation of what a player would see — not a real player session (the agent
+  // has no team), so nothing here is submittable. Deliberately excludes solution_code and
+  // hidden-test detail from the rendered output, even though `selected` (owner-scoped) already
+  // has that data locally — the point is an accurate preview, not a security boundary.
+  function renderPreviewTab(el) {
+    const c = selected.challenge;
+    if (!c) {
+      el.innerHTML = `<p class="hint-text">${icon("alert-triangle", 13)} Save the challenge before previewing it.</p>`;
+      return;
+    }
+    const visibleCases = selected.test_cases.filter((tc) => tc.visibility === "visible");
+    el.innerHTML = `
+      <p class="classified-tag">${icon("eye", 12)} Player view simulation</p>
+      <h3 style="margin:0.5rem 0;">${escapeHtml(c.title || selected.title)}</h3>
+      <p>${escapeHtml(c.prompt)}</p>
+      ${c.function_signature ? `<p class="hint-text mono">${icon("terminal", 12)} ${escapeHtml(c.function_signature)}</p>` : ""}
+      <textarea class="mono" rows="8" spellcheck="false" disabled>${escapeHtml(c.starter_code || "")}</textarea>
+      <p class="section-heading" style="margin-top:0.75rem;">${icon("scan-line", 13)} Visible test cases (${visibleCases.length})</p>
+      <div class="ops-grid">
+        ${
+          visibleCases
+            .map(
+              (tc) => `<div class="ops-panel">
+                <p class="ops-label">${escapeHtml(tc.name)}</p>
+                <p class="hint-text mono">input: ${escapeHtml(tc.input_data ?? "")} — expected: ${escapeHtml(tc.expected_output ?? "")}</p>
+              </div>`
+            )
+            .join("") || `<p class="hint-text">No visible test cases yet — players would see none before submitting.</p>`
+        }
+      </div>
+      <p class="hint-text" style="margin-top:0.5rem;">${icon("lock-keyhole", 12)} ${selected.test_cases.length - visibleCases.length} hidden test case(s) not shown here (players never see these either).</p>
+      ${
+        selected.hints.length
+          ? `<p class="section-heading" style="margin-top:0.75rem;">${icon("key", 13)} Hints (${selected.hints.length})</p>` +
+            selected.hints.map((h) => `<p class="hint-text">${escapeHtml(h.text)}${h.point_cost ? ` (-${h.point_cost} pts)` : ""}</p>`).join("")
+          : ""
+      }
+    `;
   }
 
   loadMissions().catch((err) => flash(err.message));

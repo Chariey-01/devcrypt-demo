@@ -23,7 +23,8 @@ mission_service = MissionService(scoring=scoring_service, cipher=cipher_service,
 @login_required
 @roles_required("booth_agent")
 def select_booth():
-    missions = Mission.query.filter_by(type="code").order_by(Mission.order_index).all()
+    # Published only — a draft mission has no player-visible submissions to review yet.
+    missions = Mission.query.filter_by(type="code", status="published").order_by(Mission.order_index).all()
     if request.method == "POST":
         session["agent_mission_id"] = int(request.form["mission_id"])
         return redirect(url_for("booth.queue"))

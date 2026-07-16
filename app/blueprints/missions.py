@@ -108,7 +108,7 @@ def _serialize_challenge(challenge, team_mission):
 def status():
     team = current_team()
     state = event_service.get_state()
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
     payload = {
@@ -173,7 +173,7 @@ def answer_mcq(mcq_id):
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -233,7 +233,7 @@ def submit_challenge():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -336,7 +336,7 @@ def request_hint():
     if team.hints_used >= 3:
         return jsonify({"error": "No hints remaining for this event."}), 403
 
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -358,7 +358,7 @@ def run_visible_tests():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400

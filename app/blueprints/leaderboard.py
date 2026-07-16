@@ -17,7 +17,7 @@ def leaderboard():
 @leaderboard_bp.route("/data")
 def data():
     teams = Team.query.all()
-    missions = Mission.query.order_by(Mission.order_index).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     rows = []
     for team in teams:
         missions_done = [tm for tm in team.team_missions if tm.status in ("passed", "overridden")]

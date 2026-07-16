@@ -50,6 +50,7 @@ def _serialize_mission_summary(mission):
         "time_limit": mission.time_limit,
         "has_challenge": mission.challenge is not None,
         "grading_mode": mission.challenge.grading_mode if mission.challenge else None,
+        "status": mission.status,
     }
 
 
@@ -95,6 +96,7 @@ def _serialize_mission_detail(mission):
             "max_attempts": challenge.max_attempts,
             "bonus_points": challenge.bonus_points,
             "time_limit_seconds": challenge.time_limit_seconds,
+            "difficulty": challenge.difficulty,
         }
         payload["test_cases"] = [_serialize_testcase(tc) for tc in challenge.test_cases]
         payload["hints"] = [_serialize_hint(h) for h in challenge.hints]
@@ -138,6 +140,9 @@ def create_mission():
         order_index=next_order,
         time_limit=data.get("time_limit"),
         owner_agent_id=current_user.id,
+        # New missions start as drafts — a mission with no challenge yet was previously
+        # already visible to players (broken/empty panel) the instant it was created.
+        status="draft",
     )
     db.session.add(mission)
     db.session.commit()
@@ -180,6 +185,120 @@ def delete_mission(mission_id):
     return jsonify({"ok": True})
 
 
+@agent_bp.route("/missions/<int:mission_id>/publish", methods=["POST"])
+@login_required
+@roles_required("booth_agent")
+def publish_mission(mission_id):
+    mission = _owned_mission_or_404(mission_id)
+    if mission.challenge is None:
+        return jsonify({"error": "Add a challenge before publishing this booth."}), 400
+    mission.status = "published"
+    db.session.commit()
+    return jsonify(_serialize_mission_detail(mission))
+
+
+@agent_bp.route("/missions/<int:mission_id>/unpublish", methods=["POST"])
+@login_required
+@roles_required("booth_agent")
+def unpublish_mission(mission_id):
+    mission = _owned_mission_or_404(mission_id)
+    mission.status = "draft"
+    db.session.commit()
+    return jsonify(_serialize_mission_detail(mission))
+
+
+@agent_bp.route("/missions/<int:mission_id>/archive", methods=["POST"])
+@login_required
+@roles_required("booth_agent")
+def archive_mission(mission_id):
+    mission = _owned_mission_or_404(mission_id)
+    mission.status = "archived"
+    db.session.commit()
+    return jsonify(_serialize_mission_detail(mission))
+
+
+@agent_bp.route("/missions/<int:mission_id>/duplicate", methods=["POST"])
+@login_required
+@roles_required("booth_agent")
+def duplicate_mission(mission_id):
+    mission = _owned_mission_or_404(mission_id)
+    next_order = (db.session.query(db.func.max(Mission.order_index)).scalar() or 0) + 1
+    next_booth = (db.session.query(db.func.max(Mission.booth_id)).scalar() or 0) + 1
+    copy = Mission(
+        title=f"{mission.title} (copy)",
+        type=mission.type,
+        narrative=mission.narrative,
+        # Not a hard requirement (each mission's cryptogram tile is keyed by its own
+        # order_index/shift, not by cipher_word uniqueness) — just a nudge so a freshly
+        # duplicated, still-draft mission doesn't silently produce a visually duplicate
+        # cryptogram board if published without editing first.
+        cipher_word=f"{mission.cipher_word}COPY"[:20],
+        booth_id=next_booth,
+        order_index=next_order,
+        time_limit=mission.time_limit,
+        owner_agent_id=current_user.id,
+        status="draft",
+    )
+    db.session.add(copy)
+    db.session.flush()
+
+    if mission.challenge:
+        src = mission.challenge
+        challenge = Challenge(
+            mission_id=copy.id,
+            type=src.type,
+            title=src.title,
+            prompt=src.prompt,
+            language=src.language,
+            function_signature=src.function_signature,
+            starter_code=src.starter_code,
+            solution_code=src.solution_code,
+            grading_mode=src.grading_mode,
+            pass_threshold=src.pass_threshold,
+            max_attempts=src.max_attempts,
+            bonus_points=src.bonus_points,
+            time_limit_seconds=src.time_limit_seconds,
+            difficulty=src.difficulty,
+        )
+        db.session.add(challenge)
+        db.session.flush()
+        for tc in src.test_cases:
+            db.session.add(
+                TestCase(
+                    challenge_id=challenge.id,
+                    name=tc.name,
+                    input_data=tc.input_data,
+                    expected_output=tc.expected_output,
+                    weight=tc.weight,
+                    visibility=tc.visibility,
+                    failure_message=tc.failure_message,
+                    order_index=tc.order_index,
+                )
+            )
+        for hint in src.hints:
+            db.session.add(
+                Hint(
+                    challenge_id=challenge.id,
+                    text=hint.text,
+                    point_cost=hint.point_cost,
+                    order_index=hint.order_index,
+                )
+            )
+
+    for asset in mission.evidence_files:
+        db.session.add(
+            EvidenceFile(
+                mission_id=copy.id,
+                label=asset.label,
+                file_type=asset.file_type,
+                content=asset.content,
+            )
+        )
+
+    db.session.commit()
+    return jsonify(_serialize_mission_detail(copy)), 201
+
+
 @agent_bp.route("/missions/<int:mission_id>/challenge", methods=["PUT"])
 @login_required
 @roles_required("booth_agent")
@@ -206,6 +325,8 @@ def upsert_challenge(mission_id):
     challenge.max_attempts = data.get("max_attempts") or None
     challenge.bonus_points = int(data.get("bonus_points") or 0)
     challenge.time_limit_seconds = int(data.get("time_limit_seconds") or 5)
+    difficulty = data.get("difficulty")
+    challenge.difficulty = difficulty if difficulty in ("easy", "medium", "hard") else None
     db.session.commit()
     return jsonify(_serialize_mission_detail(mission))
 

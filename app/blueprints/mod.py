@@ -45,7 +45,10 @@ def dashboard():
 @roles_required("game_master")
 def data():
     teams = Team.query.order_by(Team.name).all()
-    missions = Mission.query.order_by(Mission.order_index).all()
+    # Published only — must match what the player's own /missions/status sees, so the GM
+    # dashboard's "current mission" column never shows a draft mission a team can't actually
+    # reach (mod.py:99's list_missions is intentionally unfiltered — GMs manage drafts too).
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     rows = []
     for team in teams:
         missions_done = sum(1 for tm in team.team_missions if tm.status in ("passed", "overridden"))
@@ -96,6 +99,8 @@ def team_detail(team_id):
 @login_required
 @roles_required("game_master")
 def list_missions():
+    # Deliberately unfiltered by status — GMs manage draft/archived missions too (e.g. setting
+    # a starting booth or assigning an agent before the mission is published).
     missions = Mission.query.order_by(Mission.order_index).all()
     return jsonify(
         {

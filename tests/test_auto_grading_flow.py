@@ -126,3 +126,18 @@ def test_hidden_test_content_never_serialized_in_status(client, app):
     challenge_payload = status["mission"]["challenge"]
     assert "test_cases" not in challenge_payload
     assert "hidden case" not in str(challenge_payload)
+
+
+def test_draft_mission_is_invisible_to_players(client, app):
+    mission_id, team_id = _setup_auto_graded_mission(app)
+    with app.app_context():
+        mission = Mission.query.get(mission_id)
+        mission.status = "draft"
+        db.session.commit()
+    _login_team(client)
+
+    status = client.get("/missions/status").get_json()
+    # With the auto-graded mission drafted, the team should skip straight to the trailing
+    # published mission — never see the draft one, and never see it as "finished" either.
+    assert status["mission"] is not None
+    assert status["mission"]["title"] == "Trailing Node"
