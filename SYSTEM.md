@@ -125,21 +125,46 @@ is the per-mission audit trail feeding it.
   needs the latter to animate/style newly-revealed tiles, since a plaintext letter and its
   Caesar-shifted counterpart both just look like "some uppercase letter."
 
-## 6. Why polling instead of WebSockets
+## 6. Real-time push (Socket.IO), with polling as the guaranteed fallback
 
-`flask-socketio` is initialized (`app/extensions.py`) but unused for this pass. Two reasons,
-both already in the PRD itself:
+Earlier revisions of this doc described Socket.IO as initialized-but-unused, relying purely on
+2-second polling. That's no longer accurate — Socket.IO push is active in production. The
+design principle is **push-triggers-refresh, not push-carries-state**: every socket emit
+(`app/sockets.py`) is a bare `{"type": "..."}` ping with no game data in the payload. The
+browser responds by calling the *same* `refresh()` function its poll loop already calls. This
+means there's exactly one rendering/serialization path (the REST endpoints), not two to keep in
+sync, and a socket payload can never leak anything the REST endpoints already filter (hidden
+test cases, `solution_code`, another team's fragment).
 
-1. **NFR-05** requires the demo to run with zero internet access. The Socket.IO *protocol*
-   needs a matching client-side JS library, which normally comes from a CDN or an npm build
-   step — neither is compatible with "one laptop, no internet, no build step" (ADR-03).
-2. The PRD's own tech-stack table pre-approves this: *"Degrades gracefully to polling if
-   WebSocket is unavailable."*
+Every poll loop from the original design is **still there, unchanged**, as the fallback: if a
+socket never connects or drops mid-session, the 2-second poll keeps everything
+eventually-consistent regardless — exactly the guarantee the original NFR-05/ADR-03 reasoning
+called for, just with an added low-latency path on top rather than instead of it.
 
-Every "live" surface (player cryptogram/timer, booth queue, GM dashboard, public leaderboard)
-polls its JSON endpoint every 2 seconds via plain `fetch()` — comfortably inside NFR-01's
-2-second leaderboard-update requirement, with no CDN dependency. If a future phase adds real
-WebSockets, the server-side `flask-socketio` wiring is already there to build on.
+This required an async-capable gunicorn worker (`-k gevent`, see §10/DEPLOYMENT.md), since sync
+workers only support Socket.IO's HTTP long-polling fallback, never a true WebSocket upgrade.
+
+## 6a. Emergency Mode & operational safety valves
+
+Three Game Master tools exist specifically for live-event incident recovery, all audit-logged
+(`app/blueprints/mod.py`):
+
+- **Reset Mission** — clears a stuck `TeamMission`'s cooldown/attempts/pending-review state
+  without force-passing it or wiping legitimate progress. For "a bug gave this team a bad
+  60-second penalty" or "attempts got exhausted incorrectly," not for undoing a real result.
+- **Force Pass + Fragment** (the pre-existing mission override) — force-completes a stuck
+  mission, same code path as an auto/manual pass.
+- **Set Score** — direct score correction on a `TeamMission`, propagated to the team total.
+
+A fourth, event-wide switch lives in **Event Settings** (`/mod/event-settings`,
+§8b): **disable automated grading**. If the grading sandbox misbehaves mid-event, this reroutes
+every auto-graded submission into the existing manual-review queue instead of executing
+submitted code — a kill switch, not a cosmetic toggle.
+
+Structured logging (`logging.basicConfig`, wired in `app/__init__.py`) writes team/staff logins,
+challenge submissions, grading outcomes, Socket.IO connects/disconnects, and every audited
+GM/agent/officer action to stdout — visible directly in Railway's log viewer without a database
+query mid-incident.
 
 ## 7. Challenge types — what's auto vs. human-reviewed
 
@@ -171,29 +196,87 @@ id; the Game Master assigns that ownership from `/mod/` (Agents & Booths panel) 
 generate team credentials + QR codes, add team members, and set a team's starting booth
 from the same dashboard — but has no route that can edit a `Challenge`'s content.
 
-## 9. Running the whole thing locally to see all four roles interact
+**Mission lifecycle**: every `Mission` has a `status` — `draft` (default for newly-created
+missions; invisible to players, fixes a real gap where a half-authored mission with no
+challenge yet was previously already player-visible with a broken panel), `published`
+(the default for every mission that existed before this field was added, so nothing already
+live changed behavior), or `archived`. Player-facing queries, the leaderboard, and the GM
+dashboard's "current mission" column all filter to `published` — a draft can never appear as a
+team's current mission anywhere. The Agent Dashboard adds Publish/Unpublish/Archive actions,
+**Duplicate** (deep-copies a mission's challenge/tests/hints/files into a fresh draft — a
+starting point for a variant, not a finished publish-ready copy), an optional agent-declared
+`difficulty` (easy/medium/hard, display-only), and a read-only **Preview as Player** tab that
+simulates the player view without exposing `solution_code` or hidden-test detail.
+
+## 7a. Moderator Activity Feed, Analytics, and Exports
+
+**Activity Feed** (`/mod/activity`) — the same `EventLog` audit trail already described in §1,
+surfaced globally (previously only queryable per-team on a team's detail page) and
+Socket.IO-refreshed on the existing `mod_update` event. Individual code submissions and test
+runs now write an `EventLog` row too (previously only the eventual mission pass/override was
+logged) — the actor is `None` since a team isn't a `User` row; team identity and outcome are
+carried in the log's metadata field instead.
+
+**Analytics Dashboard** (`/mod/analytics`) — total submissions, pass/fail rate, average
+completion time (`TeamMission.completed_at - started_at`, both already populated by the
+existing mission-completion flow — no new tracking needed), hint usage, and per-challenge
+pass-rate/most-failed-challenge (derived from real `CodeSubmission` attempts — a useful
+empirical cross-check against a challenge's agent-declared `difficulty` label). Visualized with
+the existing `.timer-bar` CSS and data tables — no charting library added.
+`LeaderboardSnapshot` existed as a model since the original schema but was never written to;
+it's now populated on every score-affecting event (mission completion, clearance stamp, score
+override) via the same `notify_global("leaderboard_refresh")` signal those paths already fired,
+rather than a new scheduler.
+
+**Exports** — beyond the original team-summary CSV, `/mod/export/submissions.csv`,
+`/mod/export/challenges.csv`, and `/mod/export/event-stats.csv` cover submission history,
+per-challenge stats, and aggregate event statistics respectively.
+
+## 8b. Event Settings
+
+`/mod/event-settings` centralizes event name/description, the per-team hint budget (previously
+hardcoded as `3` independently in three places — display in `/missions/status`, the actual
+enforcement gate in the hint-request route, and the booth queue's display — all three now read
+`EventState.hint_limit`), whether the public leaderboard is visible (staff dashboards are never
+affected by this), and the automated-grading kill switch described in §6a. Total published-booth
+count is shown read-only, derived from `Mission.query`, deliberately **not** a separately
+editable number — a config value that could drift out of sync with the actual mission set would
+just reintroduce the same class of bug fixed by deriving the "finished" threshold from the real
+count instead of a hardcoded `6` (also fixed this pass, in `leaderboard.py` and `mod.py`, plus
+the same hardcoded `/6` and `/2` denominators in two frontend templates).
+
+## 9. Running the whole thing locally to see all roles interact
 
 ```bash
 cd devcrypt
 source .venv/bin/activate
 pip install -r requirements.txt
 python3 seed.py
-flask --app run.py run --host=0.0.0.0 --port=5000
+python3 run.py
 ```
 
-Open four browser tabs (or windows) at `http://localhost:5000`:
+`flask run` will *not* work here — it never executes the `if __name__ == "__main__":` block
+that calls `socketio.run()`, so it silently falls back to a dev server that can't hold a
+WebSocket upgrade open. `python3 run.py` is the only local entrypoint that exercises the same
+gevent/Socket.IO path as production.
+
+Open browser tabs (or windows) at `http://localhost:5000`:
 
 1. **Game Master** — `/auth/login` → `gm@devcrypt.local` / `changeme` → click **Start event**.
 2. **Team** — `/auth/team-login` → `Alpha Squad` / `ALPHA01` → answer the 3 MCQs on
    Discovery Node, submit anything for the code challenge.
 3. **Booth Agent** — `/auth/login` → `agent1@devcrypt.local` / `changeme` → select
    "Discovery Node — DEPLOY" → the team's submission appears in the queue → click **PASS**.
-   Tab 2 reflects the fragment/cryptogram update within ~2 seconds.
-5. **Security Officer** — `/auth/login` → `officer@devcrypt.local` / `changeme` → issue a
+   Tab 2 reflects the fragment/cryptogram update instantly via Socket.IO (or within ~2s if the
+   socket hasn't connected, via the poll fallback).
+4. **Security Officer** — `/auth/login` → `officer@devcrypt.local` / `changeme` → issue a
    clearance stamp to Alpha Squad; confirm it shows up on the GM dashboard and leaderboard
    (audit/bonus only — it does not gate mission progress).
 
 Watch the public leaderboard at `/leaderboard/` (no login) update live as all of this happens.
+Try `/mod/analytics` and `/mod/activity` from the Game Master tab, and `/agent/dashboard`
+(login as `agent1@devcrypt.local`) to see the challenge-authoring surface.
 
-See `DEPLOYMENT.md` for local one-command setup details and the production (Render/Railway)
-deployment guide.
+See `DEPLOYMENT.md` for local one-command setup details and the production (Railway) deployment
+guide, `API.md` for the full route reference, and `SYSTEM_DESIGN.md` for the architectural
+reasoning behind these decisions.

@@ -17,7 +17,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python3 seed.py                 # 2 teams, 6 missions, 4 staff accounts
-flask --app run.py run --host=0.0.0.0 --port=5000
+python3 run.py                  # not `flask run` — skips the Socket.IO entrypoint
 ```
 
 Then open `http://localhost:5000` and either:
@@ -29,16 +29,21 @@ The Game Master must click **Start event** before player portals accept submissi
 
 ## Docs
 
-- **[SYSTEM.md](SYSTEM.md)** — full architecture: how the four roles connect, the mission
+- **[SYSTEM.md](SYSTEM.md)** — full architecture: how the roles connect, the mission
   loop end to end, every schema addition beyond the original design and why, scoring/integrity
-  rules, the cipher/fragment engine, and why this build polls instead of using WebSockets.
+  rules, the cipher/fragment engine, real-time push, Emergency Mode, the Agent Dashboard's
+  challenge-authoring platform, and the moderator Analytics/Activity Feed/Exports.
+- **[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)** — architecture reasoning and trade-offs, including
+  Mermaid component/ER/sequence/deployment diagrams.
+- **[API.md](API.md)** — full route reference.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — local demo setup (offline-capable, single laptop) and
-  a step-by-step production deployment guide (Render/Railway + managed Postgres).
+  a step-by-step production deployment guide (Railway + managed Postgres).
+- **[EVENT_DAY_CHECKLIST.md](EVENT_DAY_CHECKLIST.md)** — checkbox-driven event-day operations.
 
 ## Stack
 
-Flask (Blueprints) · SQLAlchemy · Flask-Login + Flask-Bcrypt · SQLite (demo) / Postgres
-(production) · vanilla JS + CSS (no build step, no CDN dependency — see SYSTEM.md §6 for why).
+Flask (Blueprints) · SQLAlchemy · Flask-SocketIO (gevent) · Flask-Login + Flask-Bcrypt ·
+SQLite (demo) / Postgres (production) · vanilla JS + CSS (no build step, no CDN dependency).
 
 ## Tests
 

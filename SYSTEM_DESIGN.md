@@ -75,7 +75,7 @@ diverge the most, and it's worth being explicit about that gap rather than paper
 |---|---|---|
 | **Scalability** | Handle a full event's concurrent team count (dozens to ~100 teams) without degrading. | The layered architecture (below) scales horizontally at the *application* tier trivially — Flask is stateless per request. The real constraint was a **correctness bug, not a capacity limit**: team login used to bcrypt-verify every team's key sequentially until it found a match. Measured at ~500–700ms per bcrypt check in this environment, that meant a login could take **up to ~68 seconds at 100 teams** — past a typical gunicorn worker timeout. This was fixed by looking the team up by its already-unique `name` column first (a cheap indexed comparison) and bcrypt-verifying only that one row. This is the kind of bug that's invisible at demo scale (2–5 teams) and only surfaces exactly at the scale you're asking about — a good illustration of why "scalability" isn't just "add more servers," it's auditing every O(n) operation against your expected n. |
 | **Reliability** | No data loss on refresh, device switch, or a booth agent's tablet dying mid-review. | All game state lives in the database, not in browser storage or server memory — a team can reload or switch devices and their session (cookie) plus DB state reconstruct everything. The one thing that *is* client-side and ephemeral is an in-progress, unsubmitted textarea draft — a deliberate, acceptable trade-off (see `app.js`'s draft-preservation logic), since submitted state always persists immediately. |
-| **Availability** | Stay up for the duration of a live event; a crash mid-event is much worse than a crash mid-development. | Two deployment modes exist for different availability needs: an offline single-laptop demo mode (no dependency on internet at all — if the venue Wi-Fi to the *outside world* drops, the event keeps running since players only need the local network), and a cloud mode (Vercel + managed Postgres) for when the event needs to be reachable beyond one room. |
+| **Availability** | Stay up for the duration of a live event; a crash mid-event is much worse than a crash mid-development. | Two deployment modes exist for different availability needs: an offline single-laptop demo mode (no dependency on internet at all — if the venue Wi-Fi to the *outside world* drops, the event keeps running since players only need the local network), and a cloud mode (Railway + managed Postgres, currently live) for when the event needs to be reachable beyond one room. |
 | **Security** | Protect team keys/staff passwords, prevent one team from affecting another, prevent client-side score tampering. | Covered in depth in [Section 11](#11-security-considerations). |
 | **Maintainability** | A new engineer should find the right file within about a minute. | Enforced structurally, not by convention alone: routes call services, services call repositories, repositories touch the ORM — and nothing skips a layer. See [Section 5](#5-high-level-architecture). |
 | **Performance** | Leaderboard and mission state should feel "live" (sub-2-second updates). | Met via 2-second polling intervals, not WebSockets — a deliberate trade-off explained in [Section 5](#5-high-level-architecture) and revisited in [Section 12](#12-future-improvements). |
@@ -156,25 +156,28 @@ site, and it would have been trivial for one path to silently drift from another
 is exactly the kind of bug that shows up as "why did this team get points for hint usage
 they shouldn't have").
 
-**Where Socket.IO and QR fit in — and where they don't (yet)**:
+**Where Socket.IO and QR fit in**:
 
-- **Flask-SocketIO is initialized** (`app/extensions.py`) but genuinely **not used** for
-  real-time updates today. Every "live" surface — the cryptogram board, mission timer, booth
-  queue, moderator dashboard, public leaderboard — updates via plain `fetch()` polling every
-  2 seconds. This was a deliberate trade-off: the offline single-laptop demo mode (NFR-05)
-  cannot depend on a CDN-hosted Socket.IO client library, and a build step was ruled out to
-  keep "unzip and run" setup time under 10 minutes. Polling every 2 seconds already meets the
-  event's own 2-second "feels live" requirement, at the cost of some wasted requests when
-  nothing has changed. The Socket.IO server-side wiring is left in place specifically so a
-  future phase can flip this on without re-architecting anything above the service layer.
-- **QR codes exist only as a credential-delivery mechanism today**, not as an authentication
-  method. `generate_credentials.py --qr` encodes a team's plaintext key (and a login URL) as
-  a QR image meant to be printed onto a physical key card and typed in by hand or copy-pasted
-  after scanning with a phone's own camera app — the application itself never reads a QR
-  code. A genuine "scan this code to log in" flow is a different, larger feature (see
-  [Section 12](#12-future-improvements)) with its own security trade-offs, and conflating
-  "QR as a printing convenience" with "QR as an auth protocol" in a design doc would be
-  misleading about what's actually shipped.
+- **Socket.IO push is active**, layered on top of the polling described above rather than
+  replacing it — the guiding principle is **push-triggers-refresh, not push-carries-state**.
+  Every emit (`app/sockets.py`) is a bare `{"type": "..."}` ping with no game-state payload; the
+  browser reacts by calling the exact same `refresh()` function its poll loop already calls.
+  This means there is still only one rendering/serialization path (the REST endpoints) to keep
+  correct, and a socket payload can never leak anything those endpoints already filter (hidden
+  test cases, `solution_code`, another team's fragment). A dropped or never-connected socket
+  degrades to precisely the 2-second poll guarantee the original NFR-05 design already promised
+  — the fallback isn't hypothetical, it's the literal mechanism this shipped with first. This
+  needed an async-capable gunicorn worker (`-k gevent`, see §10) — sync workers only support
+  Socket.IO's long-polling fallback, never a true WebSocket upgrade — plus green-patching
+  `psycopg2` (blocking libpq calls would otherwise stall every open socket for their duration)
+  and routing the grading subprocess call through a real OS thread pool (forking from inside a
+  gevent greenthread is a known sharp edge).
+- **QR codes remain a credential-delivery mechanism, not an authentication method.**
+  `generate_credentials.py --qr` encodes a team's plaintext key (and a login URL) as a QR image
+  meant to be printed onto a physical key card and typed in by hand or copy-pasted after
+  scanning — the application itself never reads a QR code. This is unchanged from the original
+  design; see [Section 12](#12-future-improvements) for what a genuine scan-to-login flow would
+  need.
 
 ---
 
@@ -344,22 +347,17 @@ what else was considered and why it lost.
   rather than hand-rolling cookie/session logic for the one actor group that actually needs
   individual accountability (booth agents, security officers, the game master — every
   override they perform is logged against their identity).
-- **Flask-SocketIO**, initialized but not activated (Section 5) — kept in the dependency
-  graph specifically so a later phase doesn't have to introduce a new library, only turn on
-  what's already wired.
+- **Flask-SocketIO**, now actively handling real-time push (Section 5) via an async gunicorn
+  worker, not just present-but-dormant in the dependency graph.
 - **PostgreSQL** for production, **SQLite** for the offline demo — not a compromise, a
   genuine two-mode design. SQLite needs zero setup (no server, no credentials, no network),
   which is the whole point of a "one laptop, ten minutes to running" demo target. Postgres
   handles genuine concurrent writes safely, which SQLite's single-writer lock does not, and
-  is required the moment more than one process (e.g., multiple gunicorn workers) might write
-  at the same time.
-- **Vercel** (current live deployment) for zero-ops HTTPS hosting with automatic deploys on
-  push to `main`, paired with a managed Postgres add-on — appropriate for a small, bursty,
-  demo-oriented traffic pattern where paying for always-on infrastructure isn't justified.
-  Render/Railway (gunicorn + Postgres, both already supported via the `Procfile`) remain the
-  better choice if the event needs a long-lived WebSocket connection in the future, since
-  Vercel's serverless functions are a worse fit for persistent connections than a
-  conventional always-on process.
+  is required the moment more than one process might write at the same time.
+- **Railway** (current live deployment) for zero-ops HTTPS hosting with automatic deploys on
+  push to `main`, paired with a managed Postgres add-on. Chosen over Vercel's serverless model
+  specifically because Socket.IO needs a genuine long-lived process holding a WebSocket
+  connection open — a fit serverless functions don't have.
 
 ---
 
@@ -368,34 +366,47 @@ what else was considered and why it lost.
 Two deployment shapes exist because they serve two genuinely different events, not because
 one is "the real one" and the other is a toy:
 
-**Local single-laptop demo** — `flask run --host=0.0.0.0`, SQLite file in the project
-directory, every role's browser connects over the venue's local Wi-Fi. No external network
-call is required for the game to function (per NFR-05). This is the right shape for a small
-event, a dry run, or anywhere internet access at the venue is unreliable — the local Wi-Fi
-router is the only infrastructure dependency.
+**Local single-laptop demo** — `python3 run.py` (not `flask run`, which never executes the
+`socketio.run()` call and would silently serve a dev server that can't hold a WebSocket
+upgrade open), SQLite file in the project directory, every role's browser connects over the
+venue's local Wi-Fi. No external network call is required for the game to function (per
+NFR-05). This is the right shape for a small event, a dry run, or anywhere internet access at
+the venue is unreliable.
 
-**Cloud deployment** (Vercel + managed Postgres, currently live) — appropriate once the event
-needs to be reachable from anywhere, needs to survive a single laptop dying, or needs
-multiple simultaneous booths/rooms that shouldn't all depend on one machine's Wi-Fi radio.
-This is also where the concurrency fixes in this document matter in practice: `gunicorn -w 4`
-(or Vercel's serverless equivalent) now needs to actually hold up under ~100 concurrent teams
-polling every 2 seconds, which is why the bcrypt-scan fix in Section 3 was a prerequisite for
-trusting this deployment mode at real-event scale, not an optional nice-to-have.
-
-For a self-hosted (Render/Railway) deployment specifically, the recommended production
-command is no longer just `gunicorn -w 4`, but tuned for the polling-heavy I/O pattern this
-app produces:
+**Cloud deployment** (Railway + managed Postgres, currently live) — appropriate once the event
+needs to be reachable from anywhere, needs to survive a single laptop dying, or needs multiple
+simultaneous booths/rooms that shouldn't all depend on one machine's Wi-Fi radio. Production
+command:
 
 ```
-gunicorn -w 4 --threads 4 --worker-class gthread -b 0.0.0.0:$PORT "app:create_app()"
+gunicorn -k gevent -w 1 -b 0.0.0.0:$PORT --timeout 60 --graceful-timeout 60 "app:create_app()"
 ```
 
-Sync workers (`gunicorn`'s default) each block completely for the duration of one request,
-including the network round-trip to a remote Postgres instance — with only 4 of them, only 4
-requests can be in flight across the *entire* app at once. Adding threads per worker lets each
-worker interleave several I/O-bound requests (which is exactly what a polling-heavy
-dashboard/leaderboard workload looks like) without needing a full async rewrite of the
-application.
+**Single gevent worker, not multiple sync workers with threads.** Flask-SocketIO needs an
+async-capable worker to hold true WebSocket connections open at all (sync workers only support
+Socket.IO's HTTP long-polling fallback), and `socketio.emit()` only reaches clients on the
+*same* worker process unless a shared message queue (Redis) fans it out across workers. Since
+this deploys as a single instance for one event, `-w 1` sidesteps the cross-worker broadcast
+problem entirely rather than adding Redis as new infrastructure to provision and misconfigure
+before the event — a deliberate trade-off, not an oversight. **The cost is explicit**: no
+worker-level failover — a crashed worker is a total outage until gunicorn's arbiter (a separate,
+always-alive parent process) respawns it, versus the old multi-worker model where one stuck
+worker only cost a fraction of capacity. This is mitigated, not eliminated, by the
+push-triggers-refresh design (Section 5): a worker restart just means a brief gap where clients
+fall back to their still-running poll loop until reconnect.
+
+One gevent process handles the event's realistic concurrency fine once two correctness risks
+are handled, not just worker count:
+
+1. `gevent.monkey.patch_all()` does not patch `psycopg2` by default. Since nearly every request
+   touches Postgres, an unpatched blocking libpq call would stall *every* open WebSocket and
+   in-flight request for the query's duration the first time two requests overlapped — fixed by
+   `psycogreen.gevent.patch_psycopg()` at boot (`app/__init__.py`).
+2. The grading subprocess call (`app/services/grading_service.py`) forks a child process to run
+   submitted code. Forking from inside a gevent greenthread while relying on monkey-patched
+   `subprocess`/`os` internals is a known sharp edge — fixed by routing the call through a real
+   OS thread (`gevent.get_hub().threadpool.apply(...)`), where fork/rlimit/exec all behave
+   normally and the gevent hub stays responsive while it runs.
 
 ---
 
@@ -430,7 +441,7 @@ application.
 - **Environment variables**: `SECRET_KEY`, `DATABASE_URL`, `EVENT_SALT` are read via
   `os.getenv()` with safe local-dev defaults, but are required to be set as real secrets in
   any hosting platform's environment variable settings — never committed to the repository.
-- **HTTPS**: terminated by the hosting platform (Vercel, or Render/Railway's own TLS) — the
+- **HTTPS**: terminated by the hosting platform (Railway's own TLS) — the
   application itself doesn't handle certificates, which is the correct division of
   responsibility for a small team without dedicated infrastructure staff.
 - **Role-based access control**: three staff roles plus the team "role," each gated to
@@ -447,21 +458,28 @@ The layered architecture in Section 5 was specifically chosen so that each of th
 added by extending one layer, without the core game engine (the service layer's mission
 sequencing, scoring, and cipher logic) needing to change at all:
 
-- **Real-time push via the already-initialized Flask-SocketIO**, replacing polling once a
-  deployment target can guarantee a bundled Socket.IO client (dropping the offline/no-CDN
-  constraint that motivated polling in the first place). This is purely a presentation-layer
-  change — the service layer already produces exactly the state that would be pushed.
+- ~~Real-time push via Flask-SocketIO~~ — **done**, see Section 5/6.
+- ~~A custom mission builder~~ — **done**, see Section 13 (Agent Dashboard).
+- ~~An employer/organizer analytics dashboard~~ — **done**, see Section 14.
 - **Genuine QR-scan-to-login**, issuing short-lived signed tokens instead of raw team keys,
-  layered on top of the existing `auth.team_login` logic rather than replacing it.
+  layered on top of the existing `auth.team_login` logic rather than replacing it. Still not
+  built — QR remains a printing convenience (Section 5).
 - **Adaptive difficulty** — struggling teams get simpler evidence sets — would live entirely
-  inside `MissionService`, since mission selection is already centralized there.
+  inside `MissionService`, since mission selection is already centralized there. Note this is
+  distinct from `Challenge.difficulty` (Section 13/14), which is an agent-declared display
+  label today, not a selection input.
 - **Multi-event / multi-tenant support** — every table would need an `event_id` foreign key,
   but the layered separation means the scoring/cipher logic doesn't know or care which event
   it's running for today, so this is a repository/model change, not a service-layer rewrite.
 - **AI-generated post-event feedback** — a new read-only service consuming `team_mcq_answers`
   and `event_logs`, with no changes to how the game itself runs.
-- **Achievement badges, a custom mission builder, an employer analytics dashboard** — all
-  additive: new tables, new blueprints, no changes to the existing mission loop.
+- **An event-wide countdown timer** — `Mission.time_limit` exists per-booth (Section 3), but a
+  timer for the whole event is a different, larger feature needing a background scheduled
+  check, deliberately deferred rather than built during the Section 14 pass.
+- **Multi-language grading, container/namespace sandboxing** — the grading engine (Section 13)
+  is Python-only and uses OS-level rlimits, not container isolation; both are real limitations
+  worth addressing before scaling to an adversarial or larger-language-surface event.
+- **Achievement badges** — additive: new table, no changes to the existing mission loop.
 
 The common thread: none of these require touching `MissionService`, `ScoringService`, or
 `CipherService` — which is the payoff of having enforced the layer boundaries from day one
@@ -535,3 +553,230 @@ pass/overridden status override), and `EventState.status` gaining two new values
 — read by every existing `status != "running"` check with no new branches needed. The Game
 Master deliberately has no route that writes to `Challenge` fields; that boundary is
 enforced by omission, not a runtime check that could be forgotten later.
+
+---
+
+## 14. Phase 2 — Operational Hardening & Moderator Tooling
+
+This pass focused on usability, configurability, and moderator experience for a production
+event, explicitly *not* new architecture — see `SYSTEM.md` §6a/§7a/§8b for what each surface
+does; this section is about the design decisions behind them.
+
+**Security Officer: from gate to audit trail.** The original design blocked the final
+mission's submission unless a team held two `ClearanceStamp`s. That gate was removed, not
+softened, because auditing it surfaced it wasn't actually verifying anything: `issue_stamp`
+had no precondition (any officer could stamp any team at any time), and the Game Master's
+override route already bypassed it entirely. A gate with a standing bypass and no precondition
+isn't a weaker gate, it's a placebo. `ClearanceStamp` is kept as an audit trail with a small
+score bonus — genuinely useful for a physical-checkpoint event format — but reframed
+honestly as what it verifies (a checkpoint visit happened) rather than what it doesn't (that a
+team's work is legitimate; the fragment already proves that).
+
+**Draft state, not a bolt-on flag.** `Mission.status` could have been a boolean
+`is_published`. A three-state (`draft`/`published`/`archived`) field was chosen instead because
+"hide this from players" and "I'm done with this and don't want it cluttering my active list"
+are different intents an Agent actually has, and collapsing them into one boolean would have
+forced archived content back into the draft list with no way to distinguish "still being
+written" from "retired."
+
+**Rejecting two of the literally-requested Event Setup fields.** "Number of booths" as an
+editable number was rejected in favor of a read-only count derived from `Mission.query` —
+a config field that must be kept in sync with the actual mission set by hand is exactly the
+failure mode that produced the hardcoded `>= 6` bugs this same pass fixed elsewhere (the
+"finished" threshold, independently duplicated in two blueprints, plus `/6` and `/2`
+denominators duplicated again in two frontend templates). "QR login enabled" was rejected
+outright: QR codes were never a distinct authentication path (Section 5) — encoding the same
+plaintext key used for manual entry — so there is no real toggle to build without fabricating
+one that does nothing.
+
+**`auto_grading_disabled` as a genuine kill switch, not a wizard cosmetic.** When set, it
+doesn't just hide a UI element — `submit_challenge` and `run_visible_tests` both stop invoking
+`GradingEngine` before it runs, and submissions fall through to the pre-existing manual-review
+queue. This reuses `booth.py`'s existing human-review path instead of inventing a second one,
+and exists specifically as an event-day recovery tool alongside the Emergency Mode actions
+(`SYSTEM.md` §6a) — the shared design goal across all of them is "the Game Master can always
+get a stuck team unstuck without a code deploy."
+
+**Reusing existing signals instead of adding infrastructure.** `LeaderboardSnapshot` existed in
+the original schema but nothing ever wrote to it. Rather than add a scheduler/cron dependency
+to populate it, the write is hooked into the three call sites that already fire
+`notify_global("leaderboard_refresh")` — an existing "something scoreable changed" signal,
+reused rather than duplicated. Analytics visualizations reuse the existing `.timer-bar` CSS
+progress-bar primitive instead of adding a charting library; the Moderator Activity Feed reuses
+the existing `EventLog`/`AuditService` audit trail instead of building a parallel logging
+system. The common thread across this whole pass: extend what's there before reaching for a
+new dependency.
+
+### Component diagram
+
+```mermaid
+flowchart TB
+    subgraph Presentation
+        Player[Player Portal]
+        Booth[Booth Agent UI]
+        Agent[Agent Dashboard]
+        Security[Security Officer UI]
+        Mod[Game Master Dashboard]
+        Public[Public Leaderboard]
+    end
+
+    subgraph Blueprints
+        auth[auth.py]
+        missions[missions.py]
+        boothbp[booth.py]
+        agentbp[agent.py]
+        securitybp[security.py]
+        modbp[mod.py]
+        leaderboardbp[leaderboard.py]
+    end
+
+    subgraph Services
+        MissionService
+        ScoringService
+        CipherService
+        GradingEngine
+        EventService
+        AuditService
+        AnalyticsService
+    end
+
+    subgraph Data
+        DB[(Postgres / SQLite)]
+        SocketIO{{Socket.IO}}
+    end
+
+    Player --> missions
+    Booth --> boothbp
+    Agent --> agentbp
+    Security --> securitybp
+    Mod --> modbp
+    Public --> leaderboardbp
+
+    missions --> MissionService
+    boothbp --> MissionService
+    agentbp --> GradingEngine
+    modbp --> AnalyticsService
+    modbp --> AuditService
+    securitybp --> AuditService
+    leaderboardbp --> MissionService
+
+    MissionService --> ScoringService
+    MissionService --> CipherService
+    MissionService --> DB
+    GradingEngine -.subprocess.-> GradingEngine
+    AnalyticsService --> DB
+    AuditService --> DB
+
+    missions -. emit .-> SocketIO
+    modbp -. emit .-> SocketIO
+    securitybp -. emit .-> SocketIO
+    SocketIO -. push-triggers-refresh .-> Player
+    SocketIO -. push-triggers-refresh .-> Mod
+    SocketIO -. push-triggers-refresh .-> Public
+```
+
+### Entity-relationship diagram (core gameplay tables)
+
+```mermaid
+erDiagram
+    TEAM ||--o{ TEAM_MISSION : has
+    TEAM ||--o{ FRAGMENT : earns
+    TEAM ||--o{ CLEARANCE_STAMP : receives
+    TEAM ||--o{ LEADERBOARD_SNAPSHOT : "snapshotted in"
+    MISSION ||--o| CHALLENGE : defines
+    MISSION ||--o{ TEAM_MISSION : "attempted via"
+    MISSION ||--o{ EVIDENCE_FILE : shows
+    MISSION ||--o{ MCQ : asks
+    CHALLENGE ||--o{ TEST_CASE : "graded by"
+    CHALLENGE ||--o{ HINT : offers
+    TEAM_MISSION ||--o{ CODE_SUBMISSION : logs
+    TEAM_MISSION ||--o{ TEAM_MCQ_ANSWER : records
+    USER ||--o{ MISSION : owns
+    USER ||--o{ CLEARANCE_STAMP : issues
+    USER ||--o{ EVENT_LOG : performs
+
+    TEAM {
+        int id PK
+        string name
+        string key_hash
+        int score
+        int integrity
+    }
+    MISSION {
+        int id PK
+        string title
+        string status "draft/published/archived"
+        int owner_agent_id FK
+    }
+    CHALLENGE {
+        int id PK
+        string grading_mode "manual_review/auto"
+        string difficulty
+    }
+    TEAM_MISSION {
+        int id PK
+        string status
+        datetime started_at
+        datetime completed_at
+    }
+    CODE_SUBMISSION {
+        int id PK
+        string mode "run_visible/submit"
+        bool passed
+    }
+```
+
+### Sequence diagram — auto-graded submission, end to end
+
+```mermaid
+sequenceDiagram
+    participant P as Player Browser
+    participant M as missions.py
+    participant G as GradingEngine
+    participant MS as MissionService
+    participant DB as Database
+    participant S as Socket.IO
+
+    P->>M: POST /missions/challenge/submit {code}
+    M->>DB: check EventState.auto_grading_disabled
+    alt disabled
+        M->>DB: store submission_text (manual review)
+        M-->>P: {queued: true}
+    else enabled
+        M->>G: run_all_tests(challenge, code)
+        G->>G: subprocess sandbox (rlimits, timeout)
+        G-->>M: pass/fail per test case
+        M->>DB: insert CodeSubmission
+        M->>DB: AuditService.log("submission_graded")
+        alt passed threshold
+            M->>MS: complete_mission(status="passed")
+            MS->>DB: Fragment, booth_current, EventLog
+            MS->>S: notify_team / notify_mod
+            S-->>P: team_update (push-triggers-refresh)
+        else failed
+            M->>DB: apply_retry_penalty, cooldown
+            M->>S: notify_team("submission_failed")
+        end
+        M-->>P: {correct, percent_score}
+    end
+```
+
+### Deployment diagram
+
+```mermaid
+flowchart LR
+    subgraph Client[Every browser tab]
+        JS[app.js / agent.js / mod_admin.js]
+    end
+    subgraph Railway
+        GU[gunicorn -k gevent -w 1]
+        APP[Flask app + Socket.IO]
+        PG[(Managed Postgres)]
+    end
+
+    JS -- HTTPS fetch/poll --> GU
+    JS -- WebSocket --> GU
+    GU --> APP
+    APP -- psycopg2 (green-patched) --> PG
+    APP -- subprocess in OS thread --> Sandbox[Grading sandbox: rlimits + timeout]
+```
