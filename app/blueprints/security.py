@@ -4,6 +4,7 @@ from flask_login import current_user, login_required
 from ..decorators import roles_required
 from ..extensions import db
 from ..models import ClearanceStamp, Team
+from ..services.analytics_service import AnalyticsService
 from ..services.audit_service import AuditService
 from ..services.scoring_service import ScoringService
 from ..sockets import notify_global, notify_mod
@@ -12,6 +13,7 @@ security_bp = Blueprint("security", __name__, url_prefix="/security")
 
 scoring_service = ScoringService()
 audit_service = AuditService()
+analytics_service = AnalyticsService()
 
 
 @security_bp.route("/")
@@ -62,6 +64,7 @@ def issue_stamp():
     audit_service.log(current_user, "security_officer", "clearance_stamp", "team", team.id)
     db.session.commit()
     notify_mod("clearance_stamp")
+    analytics_service.snapshot_leaderboard()
     notify_global("leaderboard_refresh")
 
     flash(f"Clearance stamp {checkpoint_id} issued to {team.name}.", "success")

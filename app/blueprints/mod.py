@@ -8,8 +8,9 @@ from flask_login import current_user, login_required
 
 from ..decorators import roles_required
 from ..extensions import db
-from ..models import CodeSubmission, EventLog, Mission, Team, TeamMember, TeamMission, User
+from ..models import Challenge, CodeSubmission, EventLog, Mission, Team, TeamMember, TeamMission, User
 from ..repositories.team_repo import TeamRepository
+from ..services.analytics_service import AnalyticsService
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.credential_service import generate_password, generate_team_key
@@ -24,6 +25,7 @@ scoring_service = ScoringService()
 cipher_service = CipherService()
 audit_service = AuditService()
 mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
+analytics_service = AnalyticsService(mission_service=mission_service)
 event_service = EventService()
 team_repo = TeamRepository()
 
@@ -322,6 +324,7 @@ def override_score(team_mission_id):
     db.session.commit()
     notify_team(team_mission.team_id, "score_override")
     notify_mod("score_override")
+    analytics_service.snapshot_leaderboard()
     notify_global("leaderboard_refresh")
     return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
 
@@ -439,3 +442,28 @@ def export_csv():
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=devcrypt_report.csv"
     return response
+
+
+@mod_bp.route("/analytics")
+@login_required
+@roles_required("game_master")
+def analytics():
+    return render_template("mod/analytics.html")
+
+
+@mod_bp.route("/analytics/data")
+@login_required
+@roles_required("game_master")
+def analytics_data():
+    pass_fail = analytics_service.pass_fail_counts()
+    avg_seconds = analytics_service.average_completion_seconds()
+    return jsonify(
+        {
+            "total_submissions": analytics_service.total_submissions(),
+            "pass_fail": pass_fail,
+            "average_completion_seconds": avg_seconds,
+            "hint_usage": analytics_service.hint_usage(),
+            "challenge_stats": analytics_service.challenge_stats(),
+            "most_failed_challenge": analytics_service.most_failed_challenge(),
+        }
+    )

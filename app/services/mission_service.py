@@ -127,5 +127,9 @@ class MissionService:
             return None
         notify_team(team.id, "mission_result")
         notify_mod("mission_result")
+        # Lazy import — avoids a circular import (analytics_service imports MissionService).
+        from .analytics_service import AnalyticsService
+
+        AnalyticsService(mission_service=self).snapshot_leaderboard()
         notify_global("leaderboard_refresh")
         return fragment_value
