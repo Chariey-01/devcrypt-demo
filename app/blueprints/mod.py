@@ -283,11 +283,10 @@ def list_submissions():
 @roles_required("game_master")
 def override_score(team_mission_id):
     team_mission = TeamMission.query.get_or_404(team_mission_id)
-    data = request.get_json(silent=True) or {}
     try:
-        new_score = int(data.get("score"))
+        new_score = int(request.form.get("score"))
     except (TypeError, ValueError):
-        return jsonify({"error": "score must be an integer."}), 400
+        abort(400)
 
     delta = new_score - team_mission.score
     team_mission.score = new_score
@@ -299,7 +298,24 @@ def override_score(team_mission_id):
     notify_team(team_mission.team_id, "score_override")
     notify_mod("score_override")
     notify_global("leaderboard_refresh")
-    return jsonify({"ok": True, "score": team_mission.score, "team_score": team_mission.team.score})
+    return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
+
+
+@mod_bp.route("/reset-mission/<int:team_mission_id>", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def reset_mission(team_mission_id):
+    team_mission = TeamMission.query.get_or_404(team_mission_id)
+    if team_mission.status in ("passed", "overridden"):
+        abort(409)
+    team_mission.penalty_until = None
+    team_mission.attempts = 0
+    team_mission.submission_text = None
+    audit_service.log(current_user, "game_master", "mission_reset", "team_mission", team_mission.id)
+    db.session.commit()
+    notify_team(team_mission.team_id, "mission_reset")
+    notify_mod("mission_reset")
+    return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
 
 
 @mod_bp.route("/event/publish", methods=["POST"])

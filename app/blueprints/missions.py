@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, render_template, request
@@ -14,6 +15,7 @@ from ..services.scoring_service import ScoringService
 from ..sockets import notify_mod, notify_team
 
 missions_bp = Blueprint("missions", __name__, url_prefix="/missions")
+logger = logging.getLogger("devcrypt.missions")
 
 cipher_service = CipherService()
 scoring_service = ScoringService()
@@ -29,7 +31,6 @@ NARRATIVE = {
     "challenge_queued": "SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.",
     "flag_final": "METAVERSE CORE RESTORED.",
     "cooldown": "NODE ON COOLDOWN.",
-    "clearance_required": "COMMAND CENTER LOCKED — TWO SECURITY CLEARANCE STAMPS REQUIRED.",
 }
 
 
@@ -136,9 +137,6 @@ def status():
         team_mission = mission_service.get_or_create_team_mission(team, mission)
         db.session.commit()
 
-        locked = mission.order_index == max(m.order_index for m in missions) and len(
-            team.clearance_stamps
-        ) < 2
         remaining_penalty = None
         if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
             remaining_penalty = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
@@ -152,7 +150,6 @@ def status():
             "status": team_mission.status,
             "attempts": team_mission.attempts,
             "penalty_remaining": remaining_penalty,
-            "locked": locked,
             "evidence_files": [
                 {"label": e.label, "file_type": e.file_type, "content": e.content}
                 for e in mission.evidence_files
@@ -247,9 +244,6 @@ def submit_challenge():
     if len(team_mission.mcq_answers) < len(mission.mcqs):
         return jsonify({"error": "Answer all threat assessment questions first."}), 400
 
-    if mission.order_index == max(m.order_index for m in missions) and len(team.clearance_stamps) < 2:
-        return jsonify({"error": NARRATIVE["clearance_required"]}), 403
-
     if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
         remaining = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
         return jsonify({"error": NARRATIVE["cooldown"], "penalty_remaining": remaining}), 429
@@ -263,6 +257,15 @@ def submit_challenge():
 
         code = data.get("code", answer)
         grading_result = grading_engine.run_all_tests(challenge, code)
+        logger.info(
+            "submission graded team=%r mission=%r passed=%s percent=%s tests=%s/%s",
+            team.name,
+            mission.title,
+            grading_result.passed_threshold,
+            grading_result.percent_score,
+            grading_result.passed_tests,
+            grading_result.total_tests,
+        )
         db.session.add(
             CodeSubmission(
                 team_mission_id=team_mission.id,
@@ -307,10 +310,12 @@ def submit_challenge():
     if challenge.type == "code":
         team_mission.submission_text = answer
         db.session.commit()
+        logger.info("submission queued for manual review team=%r mission=%r", team.name, mission.title)
         notify_mod("submission_queued")
         return jsonify({"queued": True, "message": NARRATIVE["challenge_queued"]})
 
     correct = cipher_service.solve(answer, challenge.answer_key)
+    logger.info("submission graded team=%r mission=%r passed=%s", team.name, mission.title, correct)
     if not correct:
         scoring_service.apply_retry_penalty(team, team_mission)
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)

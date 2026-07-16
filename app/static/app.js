@@ -316,7 +316,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function missionThreat(mission) {
-    if (mission.locked) return { label: "CRITICAL", tier: "crit" };
     if (mission.penalty_remaining) return { label: "ELEVATED", tier: "warn" };
     if (mission.attempts > 1) return { label: "ELEVATED", tier: "warn" };
     if (mission.mcqs_complete) return { label: "CONTAINED", tier: "ok" };
@@ -324,7 +323,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function missionStage(mission) {
-    if (mission.locked) return { label: "CLEARANCE REQUIRED", tier: "classified" };
     if (mission.pending_review) return { label: "AWAITING REVIEW", tier: "warn" };
     if (mission.penalty_remaining) return { label: "ON COOLDOWN", tier: "warn" };
     if (!mission.mcqs_complete) return { label: "THREAT ASSESSMENT", tier: "info" };
@@ -450,11 +448,6 @@ document.addEventListener("DOMContentLoaded", () => {
       challengeHtml = `<p class="section-heading">${icon("terminal", 14)} Mission Action — Submission Panel</p>`;
       if (mission.pending_review) {
         challengeHtml += `<p class="narrative-message">${icon("eye", 13)} SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.</p>`;
-      } else if (mission.locked) {
-        challengeHtml += `<p class="narrative-message">${icon(
-          "lock-keyhole",
-          13
-        )} COMMAND CENTER LOCKED — TWO SECURITY CLEARANCE STAMPS REQUIRED.</p>`;
       } else {
         challengeHtml += `<p>${escapeHtml(c.prompt)}</p>`;
         if (c.grading_mode === "auto") {
@@ -504,8 +497,6 @@ document.addEventListener("DOMContentLoaded", () => {
       ? "Answer the threat assessment questions."
       : mission.pending_review
       ? "Await field agent review."
-      : mission.locked
-      ? "Obtain two security clearance stamps."
       : "Complete the mission action to secure this node.";
 
     panel.innerHTML = `
@@ -514,9 +505,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <p class="mission-id">${icon("hash", 12)} MISSION ${missionCode}</p>
           <h2 style="margin:0.15rem 0 0;">${escapeHtml(mission.title)}</h2>
         </div>
-        <span class="classified-tag">${icon(mission.locked ? "lock-keyhole" : "unlock", 12)} ${
-      mission.locked ? "SEALED" : "ACTIVE"
-    }</span>
+        <span class="classified-tag">${icon("unlock", 12)} ACTIVE</span>
       </div>
       <p>${escapeHtml(mission.narrative)}</p>
       ${opsGridHtml}
@@ -525,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div id="mcq-stage">${mcqHtml}</div>
       <div id="challenge-stage">${challengeHtml}</div>
       ${
-        message && !mission.pending_review && !mission.locked && !mission.penalty_remaining
+        message && !mission.pending_review && !mission.penalty_remaining
           ? `<p class="narrative-message">${escapeHtml(message)}</p>`
           : ""
       }

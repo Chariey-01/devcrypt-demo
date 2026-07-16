@@ -1,10 +1,6 @@
 from app.extensions import db
 from app.models import Challenge, EventState, Mission, Team, TestCase, User
 
-# The clearance-gate check in submit_challenge() only applies to the *final* mission
-# (max order_index). A trailing dummy mission keeps the doubler mission from being that
-# final one, so these tests can focus purely on the auto-grading path.
-
 
 def _setup_auto_graded_mission(app):
     with app.app_context():

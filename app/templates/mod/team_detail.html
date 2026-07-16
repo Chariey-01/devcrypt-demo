@@ -12,13 +12,14 @@
 
   <section class="card">
     <h2 class="section-heading" style="font-size:0.95rem;">{{ icon('network', 16) }} Missions</h2>
+    <p class="hint-text">{{ icon('siren', 13) }} <strong>Emergency Actions</strong> — live-event recovery tools. Every action here is audit-logged.</p>
     <div class="grid-toolbar">
       <input type="search" placeholder="Search missions…" data-grid-search-for="mission-grid">
     </div>
     <div id="mission-grid">
       <table class="data-table">
         <thead>
-          <tr><th>Mission</th><th>Status</th><th>Score</th><th>Attempts</th><th>Hint</th><th></th></tr>
+          <tr><th>Mission</th><th>Status</th><th>Score</th><th>Attempts</th><th>Hint</th><th>Emergency Actions</th></tr>
         </thead>
         <tbody>
           {% for tm in team.team_missions|sort(attribute="mission.order_index") %}
@@ -29,11 +30,20 @@
             <td>{{ tm.attempts }}</td>
             <td>{{ "yes" if tm.hint_used else "no" }}</td>
             <td>
-              {% if tm.status not in ("passed", "overridden") %}
-              <form method="post" action="{{ url_for('mod.override', team_mission_id=tm.id) }}" class="inline-form">
-                <button type="submit" class="danger">{{ icon('siren', 12) }} Mission Override</button>
-              </form>
-              {% endif %}
+              <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                {% if tm.status not in ("passed", "overridden") %}
+                <form method="post" action="{{ url_for('mod.reset_mission', team_mission_id=tm.id) }}" class="inline-form">
+                  <button type="submit" class="ghost">{{ icon('rotate-ccw', 12) }} Reset (clear cooldown/attempts)</button>
+                </form>
+                <form method="post" action="{{ url_for('mod.override', team_mission_id=tm.id) }}" class="inline-form">
+                  <button type="submit" class="danger">{{ icon('siren', 12) }} Force Pass + Fragment</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{{ url_for('mod.override_score', team_mission_id=tm.id) }}" class="inline-form" style="display:flex;gap:0.3rem;align-items:center;">
+                  <input type="number" name="score" value="{{ tm.score }}" style="width:5rem;" aria-label="New score for {{ tm.mission.title }}">
+                  <button type="submit" class="ghost">{{ icon('gauge', 12) }} Set Score</button>
+                </form>
+              </div>
             </td>
           </tr>
           {% endfor %}

@@ -6,7 +6,7 @@
   <header class="topbar">
     <span class="brand-mini">{{ icon('shield', 16) }} DevCrypt</span>
     <span class="pill">{{ icon('fingerprint', 13) }} Security Officer</span>
-    <span class="pill"><span class="status-dot"></span> Checkpoint Active</span>
+    <span class="pill"><span class="status-dot"></span> Audit Log</span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
@@ -14,7 +14,7 @@
 
   <div id="alert-bar" class="alert-bar" aria-live="polite"></div>
 
-  <p class="hint-text">{{ icon('shield-check', 14) }} Two clearance stamps unlock the Metaverse Core (final vault) for a team.</p>
+  <p class="hint-text">{{ icon('shield-check', 14) }} Issuing a stamp logs a team's checkpoint visit and awards a small bonus — it no longer blocks mission progress.</p>
 
   <div class="grid-toolbar">
     <input type="search" placeholder="Search teams…" data-grid-search-for="checkpoint-grid">
