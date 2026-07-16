@@ -16,8 +16,9 @@ booths — each booth is a "compromised node" in a fictional incident-response n
 At each node a team reviews forensic evidence (logs, source code, network traces), answers
 threat-assessment questions, and completes an engineering challenge. Completing a node
 awards an encrypted cipher fragment and reveals letters on a shared cryptogram board. After
-all nodes are cleared and two security clearance checkpoints are passed, the team submits a
-final flag to "restore" the system.
+all nodes are cleared, the team submits a final flag to "restore" the system. (An earlier
+revision also required two Security Officer clearance stamps before the final submission;
+that gate was removed — see below.)
 
 **Primary goals**, in priority order:
 
@@ -49,8 +50,12 @@ narrow and opinionated around this one physical-plus-digital event format.
   guess another team's fragment).
 - A soft-lock system: incorrect submissions never block progress permanently — they cost
   time (penalty timer), points (hint), or heavy points + an audit-logged override.
-- Security checkpoints: two clearance stamps, issued by a human Security Officer, gate the
-  final mission.
+- Security checkpoints: clearance stamps, issued by a human Security Officer, are audit-only —
+  they log a checkpoint visit and award a small score bonus, but do not gate mission progress.
+  (Originally designed as a hard gate on the final mission; removed once fragment possession
+  was recognized as already-sufficient, server-verified proof of completion — the gate had no
+  precondition of its own and was fully bypassable via the Game Master's override, so it wasn't
+  actually verifying anything.)
 - A live, publicly visible leaderboard.
 - Game Master controls: start/pause/end the event, broadcast a message to every team, force
   an override, export a CSV report.
@@ -304,7 +309,8 @@ Fourteen tables, in four rough groups:
 - `team_missions` — status machine per team per mission (`not_started` → `in_progress` → `passed`/`overridden`), attempts, penalty timers, hint usage.
 - `team_mcq_answers` — every answer, correct or not, for analytics/audit.
 - `fragments` — one HMAC-derived value per team per completed mission.
-- `clearance_stamps` — issued by Security Officers, gates the final mission.
+- `clearance_stamps` — issued by Security Officers; audit trail + score bonus only, does not
+  gate mission progress.
 
 **Operational / analytics**
 - `leaderboard_snapshots` — periodic point-in-time captures for post-event analysis (the live leaderboard itself is computed on demand, not read from here).

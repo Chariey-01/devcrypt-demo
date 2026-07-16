@@ -73,7 +73,7 @@ def seed_grading_check_mission(team_name):
                 narrative="Double the input.",
                 cipher_word="VERIFY",
                 booth_id=1,
-                order_index=-1,  # first for every team; not the max order_index, no clearance gate
+                order_index=-1,  # first for every team
                 owner_agent_id=agent.id,
             )
             db.session.add(mission)

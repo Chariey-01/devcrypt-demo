@@ -27,8 +27,9 @@ log in — there is no separate app per role.
       own mission loop,             → /booth/queue   (issue clearance  (live team table,
       polls /missions/status              (PASS / RETRY /  stamps, +25 pts   start/pause/end,
       every 2s)                            HINT / OVERRIDE      each,        broadcast,
-                                            on code subs)   unlocks final    override, CSV
-                                                             vault)          export)
+                                            on code subs)   audit only —     override, CSV
+                                                             no gameplay     export)
+                                                             gate)
 ```
 
 **Teams never log in with email/password** — they get a team name + key card at
@@ -43,9 +44,12 @@ separate app or codebase per role, just different templates and permitted routes
 - `TeamMission` rows are where a team's in-progress work lives, and where Booth Agents /
   Game Master reach in to act on it (`PASS`/`RETRY`/`HINT`/`OVERRIDE` all mutate the same row
   a team's own `/missions/status` poll is reading).
-- `ClearanceStamp` rows written by a Security Officer are read by the Player Portal (mission
-  6 checks `len(team.clearance_stamps) >= 2` before allowing a submission) and by the
-  Leaderboard (`clearance` column).
+- `ClearanceStamp` rows written by a Security Officer are audit-only — they award a small score
+  bonus and show up on the GM dashboard / Leaderboard (`clearance` column), but do not gate any
+  mission submission. (Earlier revisions of this system gated the final mission's submission on
+  two stamps; that gate was removed since fragment possession is already server-verified proof
+  of completion, and the gate had no precondition of its own — see git history around the
+  Security Officer simplification for the reasoning.)
 - `EventState` (singleton row) is written by the Game Master's Start/Pause/End/Broadcast
   controls and read by every Player Portal poll — this is how "Start Event" simultaneously
   unlocks all team portals without any direct communication between browsers.
@@ -185,8 +189,9 @@ Open four browser tabs (or windows) at `http://localhost:5000`:
 3. **Booth Agent** — `/auth/login` → `agent1@devcrypt.local` / `changeme` → select
    "Discovery Node — DEPLOY" → the team's submission appears in the queue → click **PASS**.
    Tab 2 reflects the fragment/cryptogram update within ~2 seconds.
-5. **Security Officer** — `/auth/login` → `officer@devcrypt.local` / `changeme` → issue both
-   clearance stamps to Alpha Squad once they reach mission 6, so the final vault unlocks.
+5. **Security Officer** — `/auth/login` → `officer@devcrypt.local` / `changeme` → issue a
+   clearance stamp to Alpha Squad; confirm it shows up on the GM dashboard and leaderboard
+   (audit/bonus only — it does not gate mission progress).
 
 Watch the public leaderboard at `/leaderboard/` (no login) update live as all of this happens.
 

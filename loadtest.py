@@ -58,7 +58,7 @@ def seed(num_teams):
             narrative="Double the input.",
             cipher_word="LOADTEST",
             booth_id=1,
-            order_index=-1,  # first for every team; not the max order_index, so no clearance gate
+            order_index=-1,  # first for every team
         )
         db.session.add(mission)
         db.session.flush()
