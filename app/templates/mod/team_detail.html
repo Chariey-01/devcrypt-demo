@@ -54,25 +54,7 @@
 
   <section class="card">
     <h2 class="section-heading" style="font-size:0.95rem;">{{ icon('database', 16) }} Event Log</h2>
-    <div class="grid-toolbar">
-      <input type="search" placeholder="Search log…" data-grid-search-for="log-grid">
-    </div>
-    <div id="log-grid">
-      <table class="data-table">
-        <thead>
-          <tr><th>When</th><th>Actor role</th><th>Action</th></tr>
-        </thead>
-        <tbody>
-          {% for log in logs %}
-          <tr>
-            <td>{{ log.logged_at.strftime("%H:%M:%S") }}</td>
-            <td>{{ log.actor_role }}</td>
-            <td>{{ log.action }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    {% include "mod/_event_log_table.html" with context %}
   </section>
 </main>
 {% endblock %}

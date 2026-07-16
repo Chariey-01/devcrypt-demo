@@ -1,0 +1,23 @@
+{# Expects: logs (list of EventLog), table_id (unique DOM id for the search/sort grid) #}
+<div class="grid-toolbar">
+  <input type="search" placeholder="Search log…" data-grid-search-for="{{ table_id }}">
+</div>
+<div id="{{ table_id }}">
+  <table class="data-table">
+    <thead>
+      <tr><th>When</th><th>Actor role</th><th>Action</th><th>Details</th></tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.logged_at.strftime("%H:%M:%S") }}</td>
+        <td>{{ log.actor_role }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.event_metadata or "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="hint-text">No activity logged yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

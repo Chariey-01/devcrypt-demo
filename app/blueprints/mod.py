@@ -92,7 +92,27 @@ def team_detail(team_id):
         if tm_ids
         else (EventLog.target_type == "team") & (EventLog.target_id == team.id)
     ).order_by(EventLog.logged_at.desc()).all()
-    return render_template("mod/team_detail.html", team=team, logs=logs)
+    return render_template("mod/team_detail.html", team=team, logs=logs, table_id="log-grid")
+
+
+@mod_bp.route("/activity")
+@login_required
+@roles_required("game_master")
+def activity():
+    logs = EventLog.query.order_by(EventLog.logged_at.desc()).limit(100).all()
+    return jsonify(
+        {
+            "logs": [
+                {
+                    "when": log.logged_at.strftime("%H:%M:%S"),
+                    "actor_role": log.actor_role,
+                    "action": log.action,
+                    "metadata": log.event_metadata,
+                }
+                for log in logs
+            ]
+        }
+    )
 
 
 @mod_bp.route("/missions")

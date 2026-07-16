@@ -238,6 +238,30 @@
       </div>`;
   }
 
+  async function refreshActivity() {
+    const el = document.getElementById("activity-feed");
+    if (!el) return;
+    const data = await api("GET", "/mod/activity");
+    const rows = data.logs
+      .map(
+        (l) => `
+      <tr>
+        <td>${escapeHtml(l.when)}</td>
+        <td>${escapeHtml(l.actor_role)}</td>
+        <td>${escapeHtml(l.action)}</td>
+        <td>${escapeHtml(l.metadata || "—")}</td>
+      </tr>`
+      )
+      .join("");
+    el.innerHTML = `
+      <div class="data-grid-wrap">
+        <table class="data-table">
+          <thead><tr><th>When</th><th>Actor role</th><th>Action</th><th>Details</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="4" class="hint-text">No activity logged yet.</td></tr>`}</tbody>
+        </table>
+      </div>`;
+  }
+
   async function loadAll() {
     const [dataRes, missionsRes, agentsRes] = await Promise.all([
       api("GET", "/mod/data"),
@@ -252,10 +276,17 @@
   }
 
   if (typeof socket !== "undefined" && socket) {
-    socket.on("mod_update", () => refreshSubmissions().catch(() => {}));
+    socket.on("mod_update", () => {
+      refreshSubmissions().catch(() => {});
+      refreshActivity().catch(() => {});
+    });
   }
 
   loadAll().catch((err) => flash(err.message));
   refreshSubmissions().catch(() => {});
-  setInterval(() => refreshSubmissions().catch(() => {}), 3000);
+  refreshActivity().catch(() => {});
+  setInterval(() => {
+    refreshSubmissions().catch(() => {});
+    refreshActivity().catch(() => {});
+  }, 3000);
 })();

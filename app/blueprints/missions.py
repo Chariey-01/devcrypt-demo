@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, render_template, request
 from ..decorators import current_team, team_required
 from ..extensions import db
 from ..models import CodeSubmission, Mission, TeamMCQAnswer, TeamMission
+from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
 from ..services.grading_service import GradingEngine
@@ -22,6 +23,7 @@ scoring_service = ScoringService()
 mission_service = MissionService(scoring=scoring_service, cipher=cipher_service)
 event_service = EventService()
 grading_engine = GradingEngine()
+audit_service = AuditService()
 
 NARRATIVE = {
     "mcq_correct": "CIPHER LETTER DECODED",
@@ -279,6 +281,18 @@ def submit_challenge():
                 results_json=json.dumps(_serialize_grading_results(grading_result.results)),
             )
         )
+        # actor=None (not a User row — teams aren't staff), team identity carried in metadata,
+        # matching the existing convention for actions with no natural FK target (e.g.
+        # "credentials_generated" in mod.py).
+        audit_service.log(
+            None,
+            "team",
+            "submission_graded",
+            "team_mission",
+            team_mission.id,
+            metadata=f"{team.name}: {'passed' if grading_result.passed_threshold else 'failed'} "
+            f"({grading_result.percent_score}%)",
+        )
 
         if grading_result.passed_threshold:
             mission_service.complete_mission(team, team_mission, mission, "passed", grading_result=grading_result)
@@ -384,6 +398,14 @@ def run_visible_tests():
             passed=grading_result.passed_threshold,
             results_json=json.dumps(_serialize_grading_results(grading_result.results)),
         )
+    )
+    audit_service.log(
+        None,
+        "team",
+        "visible_tests_run",
+        "team_mission",
+        team_mission.id,
+        metadata=f"{team.name}: {grading_result.passed_tests}/{grading_result.total_tests} visible tests passed",
     )
     db.session.commit()
     notify_mod("visible_tests_run")

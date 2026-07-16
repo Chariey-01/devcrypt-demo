@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TestCase, User
+from app.models import Challenge, EventLog, EventState, Mission, Team, TestCase, User
 
 
 def _setup_auto_graded_mission(app):
@@ -126,6 +126,23 @@ def test_hidden_test_content_never_serialized_in_status(client, app):
     challenge_payload = status["mission"]["challenge"]
     assert "test_cases" not in challenge_payload
     assert "hidden case" not in str(challenge_payload)
+
+
+def test_submission_produces_a_queryable_event_log_row(client, app):
+    _setup_auto_graded_mission(app)
+    _login_team(client)
+
+    client.post("/missions/challenge/run-tests", json={"code": "print(int(input()) * 2)"})
+    client.post("/missions/challenge/submit", json={"code": "print(int(input()) * 2)"})
+
+    with app.app_context():
+        actions = [log.action for log in EventLog.query.order_by(EventLog.id).all()]
+        assert "visible_tests_run" in actions
+        assert "submission_graded" in actions
+        # metadata carries which team/outcome, matching the Moderator Activity Feed's Details column.
+        graded = EventLog.query.filter_by(action="submission_graded").first()
+        assert "Alpha" in graded.event_metadata
+        assert "passed" in graded.event_metadata
 
 
 def test_draft_mission_is_invisible_to_players(client, app):
