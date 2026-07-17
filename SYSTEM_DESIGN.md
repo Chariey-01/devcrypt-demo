@@ -169,9 +169,17 @@ they shouldn't have").
   — the fallback isn't hypothetical, it's the literal mechanism this shipped with first. This
   needed an async-capable gunicorn worker (`-k gevent`, see §10) — sync workers only support
   Socket.IO's long-polling fallback, never a true WebSocket upgrade — plus green-patching
-  `psycopg2` (blocking libpq calls would otherwise stall every open socket for their duration)
-  and routing the grading subprocess call through a real OS thread pool (forking from inside a
-  gevent greenthread is a known sharp edge).
+  `psycopg2` (blocking libpq calls would otherwise stall every open socket for their duration).
+  The grading subprocess call (`app/services/grading_service.py`) uses a plain, direct
+  `subprocess.run()` — an earlier attempt to route it through
+  `gevent.get_hub().threadpool` to sidestep a suspected fork/greenlet interaction was tried and
+  reverted, because it broke every auto-graded submission in production
+  (`RuntimeError: child watchers are only available on the default loop`). gevent's own
+  monkey-patched `subprocess` module already replaces `Popen` with a cooperative version
+  designed to be called directly from the hub thread — dispatching it into a worker thread
+  instead breaks its child-watcher setup. The code comment in `grading_service.py` documents
+  this explicitly so it doesn't get "fixed" back into a thread pool by someone who reads the
+  general gevent/fork advice without knowing this was already tried here.
 - **QR codes remain a credential-delivery mechanism, not an authentication method.**
   `generate_credentials.py --qr` encodes a team's plaintext key (and a login URL) as a QR image
   meant to be printed onto a physical key card and typed in by hand or copy-pasted after
@@ -403,10 +411,15 @@ are handled, not just worker count:
    in-flight request for the query's duration the first time two requests overlapped — fixed by
    `psycogreen.gevent.patch_psycopg()` at boot (`app/__init__.py`).
 2. The grading subprocess call (`app/services/grading_service.py`) forks a child process to run
-   submitted code. Forking from inside a gevent greenthread while relying on monkey-patched
-   `subprocess`/`os` internals is a known sharp edge — fixed by routing the call through a real
-   OS thread (`gevent.get_hub().threadpool.apply(...)`), where fork/rlimit/exec all behave
-   normally and the gevent hub stays responsive while it runs.
+   submitted code. The intuitive fix for "forking from inside a gevent greenthread" is to route
+   it through a real OS thread pool (`gevent.get_hub().threadpool.apply(...)`) — this was tried
+   and reverted, because it broke every auto-graded submission in production. gevent's
+   monkey-patching replaces `subprocess.Popen` with a cooperative version whose child-watcher
+   setup only works when called from the hub thread itself; dispatching it into a worker thread
+   crashes with `child watchers are only available on the default loop`. The actual, correct fix
+   is simpler than the intuitive one: call `subprocess.run()` directly. gevent's patched
+   `subprocess` module already makes `Popen.wait()` cooperative (it yields to other greenlets —
+   other requests, open WebSockets — while the child runs), so no thread pool is needed at all.
 
 ---
 
