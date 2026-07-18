@@ -162,6 +162,29 @@ def test_status_includes_mission_timeline(client, app):
     assert timeline[1]["status"] == "current"
 
 
+def test_status_timeline_reflects_teams_actual_rotated_route(client, app):
+    # Confirms the fix for the multi-booth physical event: a team assigned to start at the
+    # *second* booth must see that booth first in its timeline (and as "current"), with the
+    # first booth appearing later in its route — not the fixed booth-number order every team
+    # used to see regardless of their actual starting assignment.
+    doubler_id, team_id = _setup_auto_graded_mission(app)
+    with app.app_context():
+        trailing = Mission.query.filter_by(title="Trailing Node").first()
+        team = Team.query.get(team_id)
+        team.starting_mission_id = trailing.id
+        db.session.commit()
+
+    _login_team(client)
+    status = client.get("/missions/status").get_json()
+
+    assert [t["title"] for t in status["timeline"]] == ["Trailing Node", "Doubler Node"]
+    assert status["timeline"][0]["status"] == "current"
+    assert status["mission"]["title"] == "Trailing Node"
+    assert status["next_mission"] == {"mission_id": doubler_id, "title": "Doubler Node"}
+    assert status["booths_completed"] == 0
+    assert status["booths_total"] == 2
+
+
 def test_draft_mission_is_invisible_to_players(client, app):
     mission_id, team_id = _setup_auto_graded_mission(app)
     with app.app_context():

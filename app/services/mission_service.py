@@ -25,23 +25,28 @@ class MissionService:
             return None
         return missions[0] if missions else None
 
-    def _ordered_for_team(self, team, missions):
-        # Game Master-assigned starting booth (Team.starting_mission_id): rotate the
-        # sequence so the team begins there instead of at order_index 0. The highest
-        # order_index mission (the final vault, e.g. RESTORE) is deliberately excluded
-        # from rotation and always stays last, regardless of starting booth, so its
-        # clearance-stamp gate keeps meaning "after every other node is secured."
+    def ordered_for_team(self, team, missions):
+        # Full circular rotation for the physical-booth event model: a team assigned to start
+        # at booth N visits N, then every other booth in order, wrapping around, ending right
+        # before N again — e.g. starting at booth 4 of 6 visits 4,5,6,1,2,3. Equivalent to the
+        # modular-arithmetic formula next = (n % count) + 1 applied repeatedly; expressed here
+        # as a list rotation, which is the same thing without needing booth numbers to be a
+        # contiguous 1..N range.
+        #
+        # No mission is special-cased out of rotation. An earlier version always pinned the
+        # highest-order_index mission last for every team regardless of starting booth — that
+        # doesn't fit an event where every booth, including that one, can be any team's
+        # starting point (confirmed against the event's actual physical rotation design).
         if not getattr(team, "starting_mission_id", None) or len(missions) <= 1:
             return missions
-        *rotatable, final = missions
-        start_index = next((i for i, m in enumerate(rotatable) if m.id == team.starting_mission_id), None)
+        start_index = next((i for i, m in enumerate(missions) if m.id == team.starting_mission_id), None)
         if start_index is None:
             return missions
-        return rotatable[start_index:] + rotatable[:start_index] + [final]
+        return missions[start_index:] + missions[:start_index]
 
     def current_mission_for(self, team, missions):
         tm_map = {tm.mission_id: tm for tm in team.team_missions}
-        for mission in self._ordered_for_team(team, missions):
+        for mission in self.ordered_for_team(team, missions):
             team_mission = tm_map.get(mission.id)
             if not team_mission or team_mission.status not in ("passed", "overridden"):
                 return mission, team_mission

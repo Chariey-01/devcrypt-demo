@@ -114,23 +114,33 @@ def status():
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
-    # Compact per-booth progress sequence for the player's mission timeline UI — purely
-    # additive JSON key, doesn't touch any existing key.
+    # Compact per-booth progress sequence for the player's mission timeline UI — built from
+    # this team's own rotated visiting order (mission_service.ordered_for_team), not the raw
+    # booth-number order, so a team starting mid-rotation sees the sequence they're actually
+    # walking (e.g. 4,5,6,1,2,3) instead of a fixed 1-through-6 with "4" just highlighted.
     team_missions_by_mission_id = {tm.mission_id: tm for tm in team.team_missions}
     current_mission_id = mission.id if mission is not None else None
+    ordered_missions = mission_service.ordered_for_team(team, missions)
     timeline = []
-    for m in missions:
+    next_mission_payload = None
+    for i, m in enumerate(ordered_missions):
         existing = team_missions_by_mission_id.get(m.id)
         if existing and existing.status in ("passed", "overridden"):
             tl_status = existing.status
         elif m.id == current_mission_id:
             tl_status = "current"
+            if i + 1 < len(ordered_missions):
+                next_mission_payload = {"mission_id": ordered_missions[i + 1].id, "title": ordered_missions[i + 1].title}
         else:
             tl_status = "not_started"
         timeline.append({"mission_id": m.id, "title": m.title, "status": tl_status})
+    booths_completed = sum(1 for t in timeline if t["status"] in ("passed", "overridden"))
 
     payload = {
         "timeline": timeline,
+        "next_mission": next_mission_payload,
+        "booths_completed": booths_completed,
+        "booths_total": len(missions),
         "event_status": state.status,
         "broadcast": (
             {"message": state.broadcast_message, "at": state.broadcast_at.isoformat()}
@@ -144,7 +154,7 @@ def status():
             "hints_used": team.hints_used,
             "hints_remaining": max(0, state.hint_limit - team.hints_used),
         },
-        "cryptogram": cipher_service.board_state(team, missions),
+        "cryptogram": cipher_service.board_state(team, ordered_missions),
         "fragments": [
             {"mission_id": f.mission_id, "value": f.cipher_value} for f in team.fragments
         ],

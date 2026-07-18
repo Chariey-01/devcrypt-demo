@@ -142,6 +142,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // (renderMissionPanel is skipped in that case to avoid stealing focus/cursor position —
   // see refresh() below — but the player still needs to know an update is waiting).
   let lastShownPrompt = null;
+  // Set whenever the current booth changes to a genuinely different one (not on first load) —
+  // rendered as a persistent "booth completed, here's your next one" banner that stays up
+  // until the player dismisses it, per the physical-event requirement that this stay visible
+  // until they've actually moved on, not just flash by.
+  let boothTransition = null;
   // Fragment-unlock form state. vaults: null until /final-flag/requirements has loaded, then
   // the ordered [{mission_id, title}] list to render one input per. flag: set once the server
   // has actually returned it. fieldErrors: mission_ids the last submit attempt got wrong.
@@ -213,6 +218,86 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       broadcastEl.classList.add("hidden");
     }
+  }
+
+  // One glanceable summary of the physical-booth rotation: current booth, next assigned
+  // booth, completed/remaining counts, fragments collected, score, and this booth's time
+  // remaining — updated every poll independent of the mission panel's focus-skip logic, so it
+  // never goes stale while a player is mid-submission.
+  function renderProgressTracker(data) {
+    const el = document.getElementById("progress-tracker");
+    if (!el) return;
+    if (data.finished) {
+      el.innerHTML = "";
+      return;
+    }
+    const mission = data.mission;
+    const remaining = Math.max(0, (data.booths_total || 0) - (data.booths_completed || 0));
+
+    let timerValue = "—";
+    let timerTier = "ok";
+    if (mission && mission.time_limit && mission.started_at) {
+      const startedAt = new Date(mission.started_at + "Z").getTime();
+      const secsRemaining = mission.time_limit - (Date.now() - startedAt) / 1000;
+      const pct = Math.max(0, Math.min(100, (secsRemaining / mission.time_limit) * 100));
+      timerTier = pct < 15 ? "crit" : pct < 50 ? "warn" : "ok";
+      timerValue = secsRemaining > 0 ? fmtClock(secsRemaining) : "OVERDUE";
+    }
+
+    el.innerHTML = `
+      <div class="ops-panel">
+        <p class="ops-label">${icon("crosshair", 14)} Current Booth</p>
+        <p class="ops-value info">${mission ? escapeHtml(mission.title) : "—"}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("chevron-right", 14)} Next Booth</p>
+        <p class="ops-value">${data.next_mission ? escapeHtml(data.next_mission.title) : "Final booth"}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("check", 14)} Booths Completed</p>
+        <p class="ops-value ok">${data.booths_completed} / ${data.booths_total}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("radar", 14)} Booths Remaining</p>
+        <p class="ops-value">${remaining}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("file-lock-2", 14)} Fragments Collected</p>
+        <p class="ops-value info">${(data.fragments || []).length} / ${data.booths_total}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("gauge", 14)} Total Score</p>
+        <p class="ops-value ok">${data.team.score}</p>
+      </div>
+      <div class="ops-panel">
+        <p class="ops-label">${icon("timer", 14)} This Booth — Time Left</p>
+        <p class="ops-value ${timerTier}">${timerValue}</p>
+      </div>
+    `;
+  }
+
+  // Stays up until the player explicitly dismisses it (not a timed toast) — the physical-event
+  // requirement is that "next assigned booth" info remains visible until they've actually
+  // moved on, not that it flashes by during a 2s poll cycle.
+  function renderBoothTransitionBanner() {
+    const el = document.getElementById("booth-transition-banner");
+    if (!el) return;
+    if (!boothTransition) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      ${icon("check", 13)} Booth complete${boothTransition.completedTitle ? `: ${escapeHtml(boothTransition.completedTitle)}` : ""}.
+      ${icon("file-lock-2", 13)} Fragment collected.
+      ${icon("chevron-right", 13)} Next booth: <strong>${escapeHtml(boothTransition.nextTitle)}</strong>.
+      ${icon("crosshair", 13)} ${boothTransition.boothsCompleted} of ${boothTransition.boothsTotal} booths completed.
+      <button type="button" class="ghost" id="dismiss-booth-transition" style="margin-left:0.5rem;">Dismiss</button>
+    `;
+    document.getElementById("dismiss-booth-transition").addEventListener("click", () => {
+      boothTransition = null;
+      renderBoothTransitionBanner();
+    });
   }
 
   function attachMcqHandlers(panel) {
@@ -463,6 +548,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const mission = data.mission;
     if (mission.id !== currentMissionId) {
+      if (currentMissionId !== null) {
+        const justCompleted = (data.timeline || []).find((t) => t.mission_id === currentMissionId);
+        boothTransition = {
+          completedTitle: justCompleted ? justCompleted.title : null,
+          nextTitle: mission.title,
+          boothsCompleted: data.booths_completed,
+          boothsTotal: data.booths_total,
+        };
+        renderBoothTransitionBanner();
+      }
       currentMissionId = mission.id;
       activeTab = 0;
       draftAnswer = "";
@@ -662,6 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("team-integrity").innerHTML = `${icon("signal", 13)} Integrity ${data.team.integrity}%`;
     document.getElementById("team-hints").innerHTML = `${icon("key", 13)} Hints ${data.team.hints_remaining}/3`;
     renderBanners(data);
+    renderProgressTracker(data);
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);
     // Skip the mission panel rebuild while the player is actively typing a submission —
