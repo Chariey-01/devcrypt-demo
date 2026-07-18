@@ -1,9 +1,23 @@
 /* ==========================================================================
    DevCrypt — Command Center theme
-   Self-hosted IBM Plex Mono/Sans. Dark SOC console aesthetic: near-black
-   ground, cyan/neon-green/electric-blue accent trio, amber reserved for
-   warnings only, red reserved for critical alerts only, purple reserved
-   for classified/encrypted elements only.
+
+   Design policy (read before adding a rule):
+   - Plex Sans is the interface typeface: nav, headings, buttons, labels,
+     forms, body copy, badges, tabs. Plex Mono is reserved for literal
+     technical data only: mission IDs/codes, cipher tiles, timestamps inside
+     logs, evidence/code content. When in doubt, it's sans.
+   - Color: an indigo/turquoise duotone is the only primary interactive
+     palette — indigo (--accent) drives actions (buttons, links, focus,
+     active tabs), turquoise (--accent-2) is reserved for data readouts and
+     the cipher/vault module. Neon green is semantic-only (success / online /
+     complete). Amber is semantic-only (warnings). Red is semantic-only
+     (critical/danger). Purple is semantic-only (classified/encrypted content
+     — not a decorative accent for arbitrary UI). Do not reach for a semantic
+     color to color a role card, a nav item, or anything else "because it
+     looks nice" — that's how the palette stops meaning anything.
+   - Glow is a scarce signal, not a hover default: reserved for the live
+     status dot, the primary button, and the cipher-reveal/complete states.
+     Everything else uses a border/background shift on interaction.
    ========================================================================== */
 
 @font-face {
@@ -41,6 +55,7 @@
   --bg-raised: #0f161d;
   --bg-card: #121a22;
   --bg-panel: #0d1319;
+  --bg-elevated: #17212b;
   --border: #1e2b34;
   --border-strong: #2a3d49;
 
@@ -49,18 +64,25 @@
   --text-dim: #7f97a3;
   --text-faint: #4b5f6a;
 
-  /* Accent trio */
-  --accent: #22d3ee;       /* cyan — primary interactive */
-  --accent-dim: #0e7490;
-  --neon: #39ff8c;         /* neon green — online / success / complete */
-  --neon-dim: #12703f;
-  --blue: #3b82f6;         /* electric blue — secondary data accent */
-  --blue-dim: #1d4ed8;
+  /* Accent — indigo/turquoise duotone. Indigo drives actions (buttons, links,
+     focus, active states); turquoise is reserved for data readouts and the
+     vault/cipher module. Together they're the only primary interactive
+     colors — not four unrelated accents fighting for attention. */
+  --accent: #7c6cf0;         /* indigo — actions */
+  --accent-dim: #4c3fb8;
+  --accent-soft: rgba(124, 108, 240, 0.1);
+  --accent-2: #2dd4c8;       /* turquoise — data readouts, vault module */
+  --accent-2-dim: #159e93;
+  --accent-2-soft: rgba(45, 212, 200, 0.12);
 
-  /* Semantic-only (do not use decoratively) */
+  /* Semantic-only — never decorative */
+  --neon: #39ff8c;         /* success / online / complete */
+  --neon-dim: #12703f;
   --amber: #fbbf24;        /* warnings only */
   --red: #f87171;          /* critical only */
-  --purple: #b58cf5;       /* classified / encrypted only */
+  --purple: #d17ee8;       /* classified / encrypted content only — shifted
+                               toward magenta so it reads distinct from the
+                               indigo primary above, not a near-duplicate */
 
   /* legacy alias — existing rules already reference --green broadly */
   --green: #39ff8c;
@@ -68,9 +90,29 @@
   --font-sans: "Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "Plex Mono", "SFMono-Regular", Consolas, monospace;
 
-  --glow-cyan: 0 0 12px -1px rgba(34, 211, 238, 0.55);
+  /* Type scale — sizes only; components set their own weight/color/spacing */
+  --text-display: 2.75rem;
+  --text-h1: 1.75rem;
+  --text-h2: 1.25rem;
+  --text-h3: 1rem;
+  --text-body: 0.95rem;
+  --text-small: 0.8rem;
+  --text-label: 0.72rem;
+
+  /* Radius — one small scale instead of ad hoc values per rule */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Glow — used sparingly, see policy note above */
+  --glow-primary: 0 0 12px -1px rgba(124, 108, 240, 0.55);
   --glow-neon: 0 0 12px -1px rgba(57, 255, 140, 0.55);
   --glow-red: 0 0 12px -1px rgba(248, 113, 113, 0.55);
+
+  /* Elevation — quiet depth for cards/panels, not glow */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px -20px rgba(0, 0, 0, 0.65);
+  --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.35), 0 24px 48px -24px rgba(0, 0, 0, 0.75);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -100,10 +142,34 @@ body {
   min-height: 100vh;
   position: relative;
   line-height: 1.5;
+  font-size: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Base heading rhythm — applies even where a template forgot a specific
+   class (e.g. a bare <h2> inside a login card). Components override size
+   only where they need something other than the default step. */
+h1, h2, h3, h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.4rem;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--text-h1); }
+h2 { font-size: var(--text-h2); }
+h3, h4 { font-size: var(--text-h3); }
+
+p {
+  margin: 0 0 0.75rem;
 }
 
 /* Decorative command-center backdrop: faint grid + scanlines + top glow.
-   Fixed, non-interactive, low-contrast — never sits between content and eye. */
+   Fixed, non-interactive, low-contrast — never sits between content and eye.
+   Attenuated further on data-dense staff dashboards, where any texture
+   behind a table competes with reading dense text. */
 .command-backdrop {
   position: fixed;
   inset: 0;
@@ -112,15 +178,23 @@ body {
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(34, 211, 238, 0.035) 0px,
-      rgba(34, 211, 238, 0.035) 1px,
+      rgba(124, 108, 240, 0.035) 0px,
+      rgba(124, 108, 240, 0.035) 1px,
       transparent 1px,
       transparent 3px
     ),
     linear-gradient(rgba(148, 197, 214, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 197, 214, 0.05) 1px, transparent 1px),
-    radial-gradient(ellipse 1100px 620px at 50% -10%, rgba(34, 211, 238, 0.09), transparent 60%);
+    radial-gradient(ellipse 1100px 620px at 50% -10%, rgba(124, 108, 240, 0.09), transparent 60%);
   background-size: auto, 42px 42px, 42px 42px, auto;
+  transition: opacity 0.2s ease;
+}
+
+body[data-page="mod"] .command-backdrop,
+body[data-page="agent"] .command-backdrop,
+body[data-page="booth"] .command-backdrop,
+body[data-page="security"] .command-backdrop {
+  opacity: 0.45;
 }
 
 body > *:not(.command-backdrop) {
@@ -130,15 +204,40 @@ body > *:not(.command-backdrop) {
 
 a {
   color: var(--accent);
+  transition: color 0.15s ease;
 }
+
+/* ==========================================================================
+   Layout containers
+   ========================================================================== */
 
 .shell {
   max-width: 960px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.15rem;
+}
+
+/* Wide container for data-dense staff dashboards (Game Master / Agent /
+   Booth / Security) — the narrow .shell above cramps tables and multi-card
+   sections on a real monitor. Landing/auth/portal/player/leaderboard stay
+   on .shell deliberately: those are single-focus screens, not dashboards. */
+.shell-wide {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+}
+
+@media (max-width: 720px) {
+  .shell-wide {
+    padding: 1.1rem 1rem;
+    gap: 1.1rem;
+  }
 }
 
 .landing {
@@ -148,69 +247,121 @@ a {
   text-align: center;
 }
 
+/* One-time entrance sequence, not a looping/scroll effect — each element
+   settles in turn rather than the whole page popping in at once. Disabled
+   automatically by the prefers-reduced-motion rule at the top of this file. */
+@keyframes settle-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.landing > .eyebrow,
+.landing > .brand,
+.landing > .tagline,
+.landing > .landing-stats,
+.landing > .role-grid,
+.landing > .footnote {
+  animation: settle-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.landing > .eyebrow { animation-delay: 0s; }
+.landing > .brand { animation-delay: 0.06s; }
+.landing > .tagline { animation-delay: 0.11s; }
+.landing > .landing-stats { animation-delay: 0.17s; }
+.landing > .role-grid { animation-delay: 0.24s; }
+.landing > .footnote { animation-delay: 0.32s; }
+
 .eyebrow {
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  font-size: var(--text-label);
   color: var(--accent);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-weight: 600;
 }
 
 .eyebrow::before {
   content: "// ";
   color: var(--text-faint);
+  font-family: var(--font-mono);
 }
 
+/* Wordmark — solid color + a small accent glyph, not a gradient-clip trick. */
 .brand {
-  font-size: 3rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: var(--text-display);
   margin: 0;
-  letter-spacing: 0.03em;
+  letter-spacing: -0.01em;
   font-family: var(--font-sans);
   font-weight: 700;
-  background: linear-gradient(90deg, var(--accent), var(--neon));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-wrap: balance;
+  color: var(--text);
+}
+
+.brand::before {
+  content: "";
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  box-shadow: var(--glow-primary);
+  flex: none;
 }
 
 .brand-mini {
-  font-size: 1.15rem;
-  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1.05rem;
+  color: var(--text);
   margin: 0;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.brand-mini .icon {
+  color: var(--accent);
 }
 
 .tagline {
   color: var(--text-dim);
-  margin-top: -0.5rem;
-  font-family: var(--font-mono);
+  margin-top: -0.4rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+}
+
+.landing-stats {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 1rem;
 }
 
 .role-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1rem;
   width: 100%;
-  margin-top: 1rem;
+  margin-top: 1.25rem;
 }
 
 .role-card {
   display: block;
   position: relative;
-  background: var(--bg-card);
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-card));
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 1.35rem;
   text-decoration: none;
   color: var(--text);
-  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
   cursor: pointer;
   font: inherit;
   text-align: left;
   overflow: hidden;
+  box-shadow: var(--shadow-md);
 }
 
 .role-card::before {
@@ -226,7 +377,7 @@ a {
 .role-card:hover {
   border-color: var(--card-accent, var(--accent));
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow-lg);
 }
 
 .role-card:hover::before {
@@ -234,30 +385,37 @@ a {
 }
 
 .role-card h2, .role-card h3 {
-  margin: 0 0 0.35rem 0;
+  margin: 0 0 0.4rem 0;
   color: var(--card-accent, var(--accent));
   font-family: var(--font-sans);
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 .role-card p {
   margin: 0;
   color: var(--text-dim);
-  font-size: 0.88rem;
+  font-size: var(--text-small);
+  line-height: 1.5;
 }
 
 .footnote {
   color: var(--text-dim);
-  font-size: 0.85rem;
-  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  font-family: var(--font-sans);
 }
 
-/* Landing page role-card accents */
-
+/* Landing page role-card accents. Staff uses the primary accent, not amber —
+   amber is reserved for warning states elsewhere and must not double as a
+   decorative role color. */
 .role-card-team { --card-accent: var(--accent); }
-.role-card-staff { --card-accent: var(--amber); }
+.role-card-staff { --card-accent: var(--text); }
 .role-card-moderator { --card-accent: var(--neon); }
 
-/* Forms */
+/* ==========================================================================
+   Forms
+   ========================================================================== */
 
 .auth-shell {
   max-width: 420px;
@@ -281,8 +439,8 @@ a {
 .portal-back a {
   color: var(--text-dim);
   text-decoration: none;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
 }
 
 .portal-back a:hover {
@@ -307,19 +465,20 @@ a {
 .portal-panel {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  padding: 1.75rem 1.5rem;
   text-align: left;
   position: relative;
+  box-shadow: var(--shadow-md);
 }
 
 .portal-panel::before {
   content: attr(data-panel-id);
   position: absolute;
-  top: 0.6rem;
-  right: 0.85rem;
+  top: 0.7rem;
+  right: 0.9rem;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   color: var(--text-faint);
   letter-spacing: 0.05em;
 }
@@ -330,16 +489,16 @@ a {
 }
 
 .portal-panel button[type="submit"]:hover {
-  box-shadow: 0 0 0 1px var(--portal-accent), 0 0 18px -3px var(--portal-accent);
+  box-shadow: 0 0 0 1px var(--portal-accent), 0 0 18px -4px var(--portal-accent);
 }
 
-.portal-staff { --portal-accent: var(--amber); }
+.portal-staff { --portal-accent: var(--text); }
 .portal-moderator { --portal-accent: var(--neon); }
 
 .auth-form, .booth-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.7rem;
 }
 
 .booth-grid {
@@ -349,21 +508,26 @@ a {
 }
 
 label {
-  font-size: 0.78rem;
+  display: inline-block;
+  font-size: var(--text-label);
   color: var(--text-dim);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.3rem;
 }
 
 input, textarea, select {
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 0.35rem;
+  border-radius: var(--radius-sm);
   padding: 0.65rem 0.75rem;
   color: var(--text);
   font: inherit;
+  font-family: var(--font-sans);
   width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .mono {
@@ -379,26 +543,31 @@ input:focus, textarea:focus, select:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-faint);
 }
 
 button {
-  padding: 0.65rem 1.1rem;
+  padding: 0.65rem 1.15rem;
   border: 0;
-  border-radius: 0.35rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: var(--text-small);
+  letter-spacing: 0.01em;
   background: var(--accent);
   color: #04141a;
-  transition: box-shadow 0.15s ease, filter 0.15s ease, transform 0.1s ease;
+  transition: box-shadow 0.15s ease, filter 0.15s ease, transform 0.1s ease, background-color 0.15s ease;
 }
 
 button:hover {
   filter: brightness(1.08);
-  box-shadow: var(--glow-cyan);
+  box-shadow: var(--glow-primary);
+  transform: translateY(-1px);
 }
 
 button:active {
@@ -419,6 +588,7 @@ button.ghost {
 
 button.ghost:hover {
   border-color: var(--accent);
+  color: var(--accent);
   box-shadow: none;
   filter: none;
 }
@@ -443,10 +613,12 @@ button:disabled {
   color: var(--text-dim);
   text-decoration: none;
   border: 1px solid var(--border);
-  border-radius: 0.35rem;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
-  font-family: var(--font-mono);
+  border-radius: var(--radius-sm);
+  padding: 0.42rem 0.8rem;
+  font-size: var(--text-small);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .ghost-link:hover {
@@ -467,7 +639,9 @@ button:disabled {
   flex: 1;
 }
 
-/* Flash messages */
+/* ==========================================================================
+   Flash messages
+   ========================================================================== */
 
 .flash-stack {
   position: fixed;
@@ -481,11 +655,12 @@ button:disabled {
 }
 
 .flash {
-  padding: 0.6rem 1rem;
-  border-radius: 0.4rem;
+  padding: 0.65rem 1.05rem;
+  border-radius: var(--radius-md);
   font-size: 0.9rem;
-  font-family: var(--font-mono);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
   animation: fade-in-down 0.25s ease;
   border: 1px solid transparent;
 }
@@ -508,7 +683,7 @@ button:disabled {
 }
 
 .flash-info {
-  background: rgba(34, 211, 238, 0.1);
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -530,14 +705,15 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.6rem 0.85rem;
+  padding: 0.65rem 0.9rem;
   background: var(--bg-card);
-  border: 1px solid var(--accent-dim);
+  border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--text);
   font-size: 0.9rem;
-  box-shadow: var(--glow-cyan);
+  font-family: var(--font-sans);
+  box-shadow: var(--shadow-sm);
   animation: fade-in-down 0.25s ease;
 }
 
@@ -546,14 +722,16 @@ button:disabled {
   flex-shrink: 0;
 }
 
-/* Topbar */
+/* ==========================================================================
+   Topbar
+   ========================================================================== */
 
 .topbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 0;
+  gap: 0.6rem;
+  padding: 0.85rem 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -565,24 +743,31 @@ button:disabled {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.78rem;
+  padding: 0.32rem 0.8rem;
+  font-size: var(--text-small);
   color: var(--text-dim);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
-/* Cards */
+/* ==========================================================================
+   Cards & ops panels
+   ========================================================================== */
 
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  padding: 1.35rem;
+  box-shadow: var(--shadow-sm);
 }
 
-/* ==========================================================================
-   Ops panels — the "MISSION STATUS / THREAT LEVEL / SYSTEM HEALTH" tiles
-   ========================================================================== */
+/* Ops panels — compact "MISSION STATUS / THREAT LEVEL / SYSTEM HEALTH"
+   stat tiles. Kept visually distinct from .card (tighter padding, corner
+   bracket detail, panel-tier background) so the two don't blur together. */
 
 .ops-grid {
   display: grid;
@@ -593,8 +778,8 @@ button:disabled {
 .ops-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 0.95rem;
   position: relative;
 }
 
@@ -623,10 +808,11 @@ button:disabled {
 }
 
 .ops-label {
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.1em;
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 600;
   color: var(--text-dim);
   display: flex;
   align-items: center;
@@ -650,7 +836,7 @@ button:disabled {
 }
 
 .ops-value.ok { color: var(--neon); }
-.ops-value.info { color: var(--accent); }
+.ops-value.info { color: var(--accent-2); }
 .ops-value.warn { color: var(--amber); }
 .ops-value.crit { color: var(--red); }
 .ops-value.classified { color: var(--purple); }
@@ -689,7 +875,9 @@ button:disabled {
   flex: none;
 }
 
-/* Classification / clearance ribbons */
+/* Classification / clearance stamp — genuinely classified/encrypted content
+   only (evidence, cipher fragments). Not a generic decorative tag; see
+   .meta-tag below for status/attempt/simulation labels. */
 
 .classified-tag {
   display: inline-flex;
@@ -701,22 +889,56 @@ button:disabled {
   text-transform: uppercase;
   color: var(--purple);
   border: 1px solid var(--purple);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   padding: 0.15rem 0.5rem;
   background: rgba(181, 140, 245, 0.08);
 }
 
-/* Mono utility — mission codes, hashes, IDs, timestamps */
+/* Generic small status/meta tag — mission header state, attempt counters,
+   preview-mode banners. Neutral/accent, never the classified-purple. */
 
-.mono {
-  font-family: var(--font-mono);
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.5rem;
+  background: var(--accent-soft);
 }
+
+.meta-tag.ok {
+  color: var(--neon);
+  border-color: var(--neon-dim);
+  background: rgba(57, 255, 140, 0.08);
+}
+
+/* Mono utility — mission codes, hashes, IDs, timestamps */
 
 .mission-id {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--text-faint);
   letter-spacing: 0.03em;
+}
+
+.mission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+.mission-header h2 {
+  margin: 0.15rem 0 0;
 }
 
 /* Mission timeline — booth-by-booth progress sequence */
@@ -744,6 +966,7 @@ button:disabled {
 }
 
 .mission-timeline-label {
+  font-family: var(--font-sans);
   font-size: 0.65rem;
   color: var(--text-dim);
   max-width: 5.5rem;
@@ -760,24 +983,35 @@ button:disabled {
   min-width: 0.75rem;
 }
 
-/* Cryptogram board */
+/* ==========================================================================
+   Vault interfaces — cryptogram board + recovered fragments. This is the
+   product's one genuinely distinctive visual feature, so it gets real
+   weight: a framed "vault door" container instead of a plain flex row.
+   ========================================================================== */
 
 .cryptogram-board {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   justify-content: center;
+  padding: 1.1rem;
+  background:
+    radial-gradient(ellipse 500px 200px at 50% 0%, var(--accent-2-soft), transparent 70%),
+    var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .cipher-word {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.8rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .cipher-word.complete {
@@ -787,17 +1021,17 @@ button:disabled {
 
 .cipher-letters {
   display: flex;
-  gap: 0.15rem;
+  gap: 0.18rem;
 }
 
 .tile {
-  width: 1.6rem;
-  height: 1.9rem;
+  width: 1.65rem;
+  height: 1.95rem;
   display: grid;
   place-items: center;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 0.2rem;
+  border-radius: var(--radius-sm);
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-dim);
@@ -821,7 +1055,29 @@ button:disabled {
   font-family: var(--font-mono);
 }
 
-/* Mission panel */
+/* Recovered fragments — presented as small evidence cards, not plain pills. */
+
+.fragment-rail {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.fragment-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  color: var(--green);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ==========================================================================
+   Mission panel
+   ========================================================================== */
 
 .timer-bar {
   height: 0.4rem;
@@ -847,17 +1103,25 @@ button:disabled {
   gap: 0.4rem;
   flex-wrap: wrap;
   margin-bottom: 0.5rem;
+  role: tablist;
 }
 
 .tab {
   background: var(--bg-raised);
   border: 1px solid var(--border);
   color: var(--text-dim);
-  padding: 0.35rem 0.75rem;
-  border-radius: 0.3rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.8rem;
-  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover:not(.active) {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 .tab.active {
@@ -869,8 +1133,8 @@ button:disabled {
 .evidence-content {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
   white-space: pre-wrap;
   font-family: var(--font-mono);
   font-size: 0.83rem;
@@ -885,12 +1149,13 @@ button:disabled {
   text-align: left;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.45rem;
   color: var(--text);
-  font-weight: 400;
+  font-weight: 500;
   text-transform: none;
   letter-spacing: normal;
   font-family: var(--font-sans);
+  padding: 0.65rem 0.9rem;
 }
 
 .mcq-option:hover:not(:disabled), .challenge-option:hover:not(:disabled) {
@@ -915,55 +1180,38 @@ button:disabled {
 }
 
 .narrative-message {
-  padding: 0.6rem 0.75rem;
-  border-radius: 0.4rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
   background: var(--bg-raised);
   border: 1px solid var(--accent-dim);
   color: var(--accent);
-  font-size: 0.88rem;
+  font-size: 0.9rem;
+  font-family: var(--font-sans);
   margin-top: 0.5rem;
-  font-family: var(--font-mono);
 }
 
 .objective {
   margin-top: 0.75rem;
-  font-size: 0.83rem;
+  font-size: var(--text-small);
   color: var(--text-dim);
+  font-family: var(--font-sans);
   border-top: 1px dashed var(--border);
   padding-top: 0.5rem;
-  font-family: var(--font-mono);
 }
 
 .broadcast, .event-banner {
   background: rgba(251, 191, 36, 0.12);
   border: 1px solid var(--amber);
   color: var(--amber);
-  padding: 0.6rem 1rem;
-  border-radius: 0.4rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-md);
   font-weight: 600;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
 }
 
 .hidden {
   display: none !important;
-}
-
-.fragment-rail {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.fragment-chip {
-  background: var(--bg-card);
-  border: 1px solid var(--green);
-  color: var(--green);
-  border-radius: 0.3rem;
-  padding: 0.3rem 0.6rem;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  box-shadow: 0 0 8px -2px rgba(57, 255, 140, 0.5);
 }
 
 /* ==========================================================================
@@ -992,19 +1240,19 @@ button:disabled {
 .data-grid-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-md);
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.88rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .data-table th, .data-table td {
   text-align: left;
-  padding: 0.5rem 0.55rem;
+  padding: 0.55rem 0.6rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -1015,7 +1263,7 @@ button:disabled {
   background: var(--bg-panel);
   color: var(--text-dim);
   font-weight: 600;
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   cursor: pointer;
@@ -1042,15 +1290,16 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.15rem 0.55rem;
+  padding: 0.18rem 0.6rem;
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 600;
+  font-family: var(--font-sans);
   border: 1px solid transparent;
 }
 
 .badge-active, .badge-in_progress { background: rgba(57, 255, 140, 0.1); color: var(--green); border-color: rgba(57, 255, 140, 0.35); }
-.badge-finished, .badge-passed { background: rgba(34, 211, 238, 0.1); color: var(--accent); border-color: rgba(34, 211, 238, 0.35); }
+.badge-finished, .badge-passed { background: var(--accent-2-soft); color: var(--accent-2); border-color: rgba(45, 212, 200, 0.35); }
 .badge-overridden { background: rgba(251, 191, 36, 0.1); color: var(--amber); border-color: rgba(251, 191, 36, 0.35); }
 .badge-not_started { background: rgba(127, 151, 163, 0.1); color: var(--text-dim); border-color: var(--border); }
 
@@ -1067,14 +1316,30 @@ button:disabled {
 .queue-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1rem;
+  border-radius: var(--radius-lg);
+  padding: 1.1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.queue-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.queue-card-header h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .queue-card pre {
   background: var(--bg);
   padding: 0.75rem;
-  border-radius: 0.4rem;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   font-size: 0.83rem;
   font-family: var(--font-mono);
@@ -1090,7 +1355,8 @@ button:disabled {
 
 .hint-text {
   color: var(--text-dim);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
+  font-family: var(--font-sans);
 }
 
 .controls {
@@ -1106,22 +1372,25 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--text-dim);
-  margin: 0.25rem 0;
+  margin: 0.3rem 0;
 }
 
 .section-heading .icon {
   color: var(--accent);
 }
 
-/* Mobile-first tweaks */
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
 
 @media (max-width: 480px) {
-  .brand { font-size: 2.2rem; }
+  .brand { font-size: 2.1rem; }
   .topbar { justify-content: center; }
   .topbar .pill:last-of-type { margin-right: 0; }
   .data-table { font-size: 0.78rem; }
@@ -1133,4 +1402,12 @@ button:disabled {
 
 @media (min-width: 600px) {
   .booth .queue { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+}
+
+/* Wide dashboards get room to lay stat/section cards out side by side
+   instead of stacking everything in one column. */
+@media (min-width: 900px) {
+  .shell-wide .ops-grid {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
 }

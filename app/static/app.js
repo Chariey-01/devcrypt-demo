@@ -348,7 +348,7 @@ document.addEventListener("DOMContentLoaded", () => {
       finishedPanel.classList.remove("hidden");
       finishedPanel.innerHTML = `
         <div class="card">
-          <p class="classified-tag">${icon("shield-check", 12)} Core Restored</p>
+          <p class="meta-tag ok">${icon("shield-check", 12)} Core Restored</p>
           <h2>${icon("unlock", 22)} METAVERSE CORE RESTORED</h2>
           <div class="ops-grid" style="margin-top:0.75rem;">
             <div class="ops-panel">
@@ -521,12 +521,12 @@ document.addEventListener("DOMContentLoaded", () => {
       .join("");
 
     panel.innerHTML = `
-      <div class="mission-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;flex-wrap:wrap;">
+      <div class="mission-header">
         <div>
           <p class="mission-id">${icon("hash", 12)} MISSION ${missionCode}</p>
-          <h2 style="margin:0.15rem 0 0;">${escapeHtml(mission.title)}</h2>
+          <h2>${escapeHtml(mission.title)}</h2>
         </div>
-        <span class="classified-tag">${icon("unlock", 12)} ACTIVE</span>
+        <span class="meta-tag">${icon("unlock", 12)} ACTIVE</span>
       </div>
       <div class="mission-timeline">${timelineHtml}</div>
       <p>${escapeHtml(mission.narrative)}</p>
@@ -655,11 +655,9 @@ document.addEventListener("DOMContentLoaded", () => {
       .map(
         (item) => `
       <div class="queue-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
-          <h3 style="margin:0;display:flex;align-items:center;gap:0.4rem;">${icon("users", 15)} ${escapeHtml(
-          item.team
-        )}</h3>
-          <span class="classified-tag">${icon("crosshair", 12)} Attempt ${item.attempts + 1}</span>
+        <div class="queue-card-header">
+          <h3>${icon("users", 15)} ${escapeHtml(item.team)}</h3>
+          <span class="meta-tag">${icon("crosshair", 12)} Attempt ${item.attempts + 1}</span>
         </div>
         <p class="hint-text">${icon("key", 13)} Hints remaining ${item.hints_remaining}</p>
         <pre>${escapeHtml(item.submission)}</pre>

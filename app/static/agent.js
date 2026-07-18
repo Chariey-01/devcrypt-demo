@@ -533,7 +533,7 @@
     }
     const visibleCases = selected.test_cases.filter((tc) => tc.visibility === "visible");
     el.innerHTML = `
-      <p class="classified-tag">${icon("eye", 12)} Player view simulation</p>
+      <p class="meta-tag">${icon("eye", 12)} Player view simulation</p>
       <h3 style="margin:0.5rem 0;">${escapeHtml(c.title || selected.title)}</h3>
       <p>${escapeHtml(c.prompt)}</p>
       ${c.function_signature ? `<p class="hint-text mono">${icon("terminal", 12)} ${escapeHtml(c.function_signature)}</p>` : ""}
