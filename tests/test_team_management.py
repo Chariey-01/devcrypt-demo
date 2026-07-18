@@ -1,5 +1,16 @@
 from app.extensions import db
-from app.models import ClearanceStamp, CodeSubmission, Fragment, Mission, Team, TeamMember, TeamMission, User
+from app.models import (
+    ClearanceStamp,
+    CodeSubmission,
+    EventLog,
+    Fragment,
+    LeaderboardSnapshot,
+    Mission,
+    Team,
+    TeamMember,
+    TeamMission,
+    User,
+)
 
 
 def _setup(app):
@@ -99,4 +110,39 @@ def test_reset_team_clears_progress_but_keeps_team_and_members(app, client):
         assert CodeSubmission.query.count() == 0
         # Team identity and roster survive a progress reset.
         assert TeamMember.query.filter_by(team_id=team_id).count() == 1
+        assert Mission.query.get(mission_id) is not None
+
+
+def test_reset_all_teams_clears_every_team_and_event_history(app, client):
+    team_id, mission_id = _setup(app)
+    with app.app_context():
+        second = Team(name="Bravo", score=15, integrity=90)
+        second.set_key("BRAVO01")
+        db.session.add(second)
+        db.session.flush()
+        second_id = second.id
+        db.session.add(TeamMission(team_id=second.id, mission_id=mission_id, status="in_progress"))
+        db.session.add(LeaderboardSnapshot(team_id=team_id, rank=1, score=40, integrity=80))
+        db.session.add(EventLog(actor_role="game_master", action="pre_existing_noise"))
+        db.session.commit()
+        assert EventLog.query.count() == 1  # just the noise row — _setup() writes DB rows directly, no audit calls
+
+    _login_gm(client)
+    res = client.post("/mod/teams/reset-all")
+    assert res.status_code == 200
+    assert res.get_json()["teams_reset"] == 2
+
+    with app.app_context():
+        for tid in (team_id, second_id):
+            team = Team.query.get(tid)
+            assert team.score == 0
+            assert team.integrity == 100
+            assert TeamMission.query.filter_by(team_id=tid).count() == 0
+        assert LeaderboardSnapshot.query.count() == 0
+        # Old activity is gone, but the reset action itself left exactly one trace.
+        logs = EventLog.query.all()
+        assert len(logs) == 1
+        assert logs[0].action == "all_teams_reset"
+        # Team rows and event content (missions) survive a reset — only progress is cleared.
+        assert Team.query.count() == 2
         assert Mission.query.get(mission_id) is not None

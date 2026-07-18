@@ -201,6 +201,24 @@ def reset_team(team_id):
     return jsonify({"ok": True})
 
 
+@mod_bp.route("/teams/reset-all", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def reset_all_teams():
+    # Full clean slate (every team's progress, leaderboard history, and the entire
+    # activity log) — the moment testing ends and the real event begins, not a mid-event
+    # single-team retry (that's reset_team above). The log entry below is written AFTER
+    # reset_all_teams() clears EventLog, so it survives as the one record that a reset
+    # happened, instead of being wiped by its own action.
+    team_count = Team.query.count()
+    admin_reset_service.reset_all_teams()
+    audit_service.log(current_user, "game_master", "all_teams_reset", metadata=f"{team_count} teams")
+    db.session.commit()
+    notify_mod("teams_reset_all")
+    notify_global("leaderboard_refresh")
+    return jsonify({"ok": True, "teams_reset": team_count})
+
+
 @mod_bp.route("/team/<int:team_id>/member", methods=["POST"])
 @login_required
 @roles_required("game_master")

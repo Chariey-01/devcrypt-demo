@@ -116,6 +116,7 @@
         <input type="text" name="name" placeholder="Team name or staff email" required style="width:auto;">
         <button type="submit">${icon("key", 13)} Generate + QR</button>
       </form>
+      <button type="button" class="danger" id="reset-all-teams-btn" style="margin-bottom:1rem;">${icon("rotate-ccw", 13)} Reset ALL Teams (clears every team's progress + activity log)</button>
       ${teamRows}
     `;
 
@@ -167,6 +168,23 @@
         await api("DELETE", `/mod/team/${teamId}/member/${memberId}`);
         await loadAll();
       });
+    });
+
+    document.getElementById("reset-all-teams-btn").addEventListener("click", async () => {
+      if (
+        !confirm(
+          "Reset EVERY team's progress and clear the entire activity log? This is meant for the moment testing ends and the real event begins — it cannot be undone."
+        )
+      )
+        return;
+      try {
+        const result = await api("POST", "/mod/teams/reset-all");
+        await loadAll();
+        await refreshActivity().catch(() => {});
+        flash(`Reset ${result.teams_reset} team(s).`);
+      } catch (err) {
+        flash(err.message);
+      }
     });
 
     el.querySelectorAll("[data-rename-team]").forEach((form) => {
