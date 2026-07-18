@@ -11,11 +11,11 @@ grading, which will leave clearly test-shaped stamps: LoadTest teams aside, it d
 itself a useful signal about which database it's pointed at).
 
 Usage:
-    # Against a local server (after `python3 seed.py` + a running gunicorn/run.py):
-    python3 verify_deployment.py --url http://127.0.0.1:5000
+    # Against a local server (after `python3 scripts/seed.py` + a running gunicorn/run.py):
+    python3 scripts/verify_deployment.py --url http://127.0.0.1:5000
 
     # Against a staging deployment (after running seed.py against it once):
-    python3 verify_deployment.py --url https://your-app.up.railway.app
+    python3 scripts/verify_deployment.py --url https://your-app.up.railway.app
 
     # --seed-grading-check: none of the 6 default seed.py missions are auto-graded, so without
     # this flag "Automated grading" never actually exercises the grading engine — it just
@@ -23,13 +23,19 @@ Usage:
     # flag imports the app directly and inserts one auto-graded mission ahead of Alpha Squad's
     # queue (requires DATABASE_URL to point at the *same* database --url is serving, e.g. run
     # this from the same shell you'd run `flask db upgrade`/`deploy_db_setup.py` from):
-    python3 verify_deployment.py --url https://your-app.up.railway.app --seed-grading-check
+    python3 scripts/verify_deployment.py --url https://your-app.up.railway.app --seed-grading-check
 
 Exit code 0 if every check passes, 1 otherwise — safe to use as a gate.
 """
 import argparse
+import os
 import sys
 import time
+
+# Running as `python3 scripts/verify_deployment.py` puts only scripts/ on sys.path (Python adds
+# the script's own directory, not the cwd) — add the repo root so `app` resolves regardless of
+# invocation (needed by --seed-grading-check, which imports it lazily).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import requests

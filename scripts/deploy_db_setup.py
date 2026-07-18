@@ -1,7 +1,7 @@
 """One safe, idempotent command for database setup — the only DB command the deployment runbook
 needs. Run this after every deploy, first time or the hundredth time:
 
-    python3 deploy_db_setup.py
+    python3 scripts/deploy_db_setup.py
 
 Why this exists: the migration history (migrations/versions/) only captures the *incremental*
 diff from when Flask-Migrate was adopted onto this project — it assumes the base schema (Team,
@@ -19,7 +19,13 @@ detects which situation it's in and does the right thing automatically:
 
 Either way, the database ends up fully current and correctly stamped. Safe to run repeatedly.
 """
+import os
 import sys
+
+# Running as `python3 scripts/deploy_db_setup.py` puts only scripts/ on sys.path (Python adds
+# the script's own directory, not the cwd) — add the repo root so `app` resolves regardless of
+# invocation.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import inspect
 

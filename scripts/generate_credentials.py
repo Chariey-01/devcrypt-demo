@@ -10,7 +10,7 @@ stored in the database — there is no way to recover a lost key/password, only 
 regenerate a new one by re-running this script for that team/account.
 
 Usage:
-    python3 generate_credentials.py \
+    python3 scripts/generate_credentials.py \
         --teams "Alpha Squad" "Bravo Squad" "Charlie Squad" \
         --game-masters gm@devcrypt.local \
         --booth-agents agent1@devcrypt.local agent2@devcrypt.local \
@@ -25,7 +25,14 @@ text, not a clickable link, so scanning it doesn't log anyone in on its own
 
 import argparse
 import csv
+import os
 import re
+import sys
+
+# Running as `python3 scripts/generate_credentials.py` puts only scripts/ on sys.path (Python
+# adds the script's own directory, not the cwd) — add the repo root so `app` resolves regardless
+# of invocation.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db

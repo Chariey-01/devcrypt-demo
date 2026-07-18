@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Running as `python3 scripts/seed.py` puts only scripts/ on sys.path (Python adds the script's
+# own directory, not the cwd) — add the repo root so `app` resolves regardless of invocation.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app import create_app
 from app.extensions import db
 from app.models import Challenge, EvidenceFile, MCQ, MCQOption, Mission, Team, User

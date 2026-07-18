@@ -6,18 +6,24 @@ race-condition guard in MissionService.complete_mission()) against a *running* s
 
 Usage:
     # 1. Seed load-test data into the target DB (only do this once per DB):
-    python3 loadtest.py --seed --teams 40
+    python3 scripts/loadtest.py --seed --teams 40
 
     # 2. Run the load test against a running server (start it separately first, e.g.
     #    `gunicorn -k gevent -w 1 -b 127.0.0.1:5000 --timeout 60 --graceful-timeout 60
     #    "app:create_app()"` — the real production worker config, not `python3 run.py`):
-    python3 loadtest.py --url http://127.0.0.1:5000 --teams 40
+    python3 scripts/loadtest.py --url http://127.0.0.1:5000 --teams 40
 """
 import argparse
+import os
 import statistics
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Running as `python3 scripts/loadtest.py` puts only scripts/ on sys.path (Python adds the
+# script's own directory, not the cwd) — add the repo root so `app` resolves regardless of
+# invocation (needed by seed() below, which imports it lazily).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import requests
