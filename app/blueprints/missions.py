@@ -342,6 +342,13 @@ def submit_challenge():
             }
         )
 
+    # Auto-graded challenges enforce max_attempts above; these two paths (manual-review "code"
+    # and flag/cipher) previously had no cap at all beyond the 60s cooldown, so a team could
+    # resubmit indefinitely once the cooldown passed. Same opt-in check as the auto branch —
+    # max_attempts defaults to None (unlimited) unless an Agent explicitly sets one.
+    if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
+        return jsonify({"error": "No attempts remaining for this challenge."}), 403
+
     if challenge.type == "code":
         team_mission.submission_text = answer
         db.session.commit()
