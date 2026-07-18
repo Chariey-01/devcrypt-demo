@@ -23,6 +23,15 @@ credentials_qr/
 # Facilitator-only answers/flags — never share alongside gameplay code
 answer-sheet.md
 
+# Internal/study docs — kept local only, not pushed to GitHub (README.md stays tracked)
+API.md
+DEPLOYMENT.md
+EVENT_DAY_CHECKLIST.md
+SYSTEM.md
+SYSTEM_DESIGN.md
+PROJECT_EXPLANATION.md
+PROJECT_EXPLANATION_PART*.md
+
 # Database
 *.db
 *.sqlite
