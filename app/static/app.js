@@ -142,7 +142,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // (renderMissionPanel is skipped in that case to avoid stealing focus/cursor position —
   // see refresh() below — but the player still needs to know an update is waiting).
   let lastShownPrompt = null;
-  let finalFlagState = null; // null = not fetched yet, otherwise { flag } or { error }
+  // Fragment-unlock form state. vaults: null until /final-flag/requirements has loaded, then
+  // the ordered [{mission_id, title}] list to render one input per. flag: set once the server
+  // has actually returned it. fieldErrors: mission_ids the last submit attempt got wrong.
+  const finalFlagState = { vaults: null, flag: null, formError: null, fieldErrors: new Set() };
 
   function showMessage(text) {
     message = text || null;
@@ -345,9 +348,11 @@ document.addEventListener("DOMContentLoaded", () => {
     return { label: "MISSION ACTION", tier: "info" };
   }
 
-  // The flag is never computed client-side and never sent until the server has independently
-  // verified every vault is actually passed (see /missions/final-flag) — this just displays
-  // whatever that endpoint returns, fetched once and cached, not re-requested on every poll.
+  // The flag is never computed client-side and never sent until the player has both (a) had
+  // the server confirm every vault is actually passed and (b) correctly re-entered every
+  // fragment they were shown during the game (see /missions/final-flag/requirements and the
+  // POST to /missions/final-flag) — the server checks the typed values against that team's own
+  // real Fragment rows, never trusting the client's say-so either way.
   function renderFinishedPanel(finishedPanel, data) {
     const scoreCard = `
       <div class="ops-grid" style="margin-top:0.75rem;">
@@ -361,25 +366,53 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>`;
 
-    let flagSection;
-    if (finalFlagState === null) {
-      flagSection = `<p class="hint-text">${icon("timer", 13)} Reconstructing final flag&hellip;</p>`;
-      api("/missions/final-flag")
-        .then((res) => {
-          finalFlagState = res.ok ? { flag: res.data.flag } : { error: (res.data && res.data.error) || "Unavailable." };
-          renderFinishedPanel(finishedPanel, data);
-        })
-        .catch(() => {
-          finalFlagState = { error: "Could not reach the server." };
-          renderFinishedPanel(finishedPanel, data);
-        });
-    } else if (finalFlagState.flag) {
-      flagSection = `<p class="mono" style="font-size:1.1rem;color:var(--green);margin-top:0.75rem;">${icon(
+    let unlockSection;
+    if (finalFlagState.flag) {
+      unlockSection = `<p class="mono" style="font-size:1.1rem;color:var(--green);margin-top:0.75rem;">${icon(
         "unlock",
         16
       )} ${escapeHtml(finalFlagState.flag)}</p>`;
+    } else if (finalFlagState.vaults === null) {
+      unlockSection = `<p class="hint-text">${icon("timer", 13)} Checking vault status&hellip;</p>`;
+      api("/missions/final-flag/requirements")
+        .then((res) => {
+          if (res.ok) {
+            finalFlagState.vaults = res.data.vaults;
+          } else {
+            finalFlagState.vaults = [];
+            finalFlagState.formError = (res.data && res.data.error) || "Unavailable.";
+          }
+          renderFinishedPanel(finishedPanel, data);
+        })
+        .catch(() => {
+          finalFlagState.vaults = [];
+          finalFlagState.formError = "Could not reach the server.";
+          renderFinishedPanel(finishedPanel, data);
+        });
+    } else if (finalFlagState.vaults.length === 0) {
+      unlockSection = `<p class="hint-text">${icon("lock-keyhole", 13)} ${escapeHtml(
+        finalFlagState.formError || "Final flag is not available."
+      )}</p>`;
     } else {
-      flagSection = `<p class="hint-text">${icon("lock-keyhole", 13)} ${escapeHtml(finalFlagState.error)}</p>`;
+      const fields = finalFlagState.vaults
+        .map(
+          (v) => `
+        <label for="fragment-${v.mission_id}">${escapeHtml(v.title)}</label>
+        <input type="text" id="fragment-${v.mission_id}" data-mission-id="${v.mission_id}"
+          class="mono${finalFlagState.fieldErrors.has(v.mission_id) ? " fragment-invalid" : ""}"
+          placeholder="e.g. AB:CD" autocomplete="off">`
+        )
+        .join("");
+      unlockSection = `
+        <div style="margin-top:0.75rem;">
+          <p class="section-heading">${icon("key", 14)} Enter every recovered fragment to unlock the final flag</p>
+          <p class="hint-text">${icon("eye", 12)} Check the Recovered Fragments rail above — type each one in exactly as shown.</p>
+          <form id="fragment-unlock-form">
+            ${fields}
+            <button type="submit">${icon("unlock", 13)} Unlock Final Flag</button>
+          </form>
+          ${finalFlagState.formError ? `<p class="narrative-message" style="border-color:var(--red);color:var(--red);">${icon("alert-triangle", 13)} ${escapeHtml(finalFlagState.formError)}</p>` : ""}
+        </div>`;
     }
 
     finishedPanel.innerHTML = `
@@ -387,8 +420,32 @@ document.addEventListener("DOMContentLoaded", () => {
         <p class="meta-tag ok">${icon("shield-check", 12)} Core Restored</p>
         <h2>${icon("unlock", 22)} GRID CORE RESTORED</h2>
         ${scoreCard}
-        ${flagSection}
+        ${unlockSection}
       </div>`;
+
+    const form = document.getElementById("fragment-unlock-form");
+    if (form) {
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const fragments = {};
+        finalFlagState.vaults.forEach((v) => {
+          fragments[v.mission_id] = document.getElementById(`fragment-${v.mission_id}`).value;
+        });
+        withLoadingButton(submitBtn, "Unlocking&hellip;", async () => {
+          const res = await api("/missions/final-flag", { method: "POST", body: JSON.stringify({ fragments }) });
+          if (res.ok) {
+            finalFlagState.flag = res.data.flag;
+            finalFlagState.formError = null;
+            finalFlagState.fieldErrors = new Set();
+          } else {
+            finalFlagState.formError = (res.data && res.data.error) || "Unlock failed.";
+            finalFlagState.fieldErrors = new Set((res.data && res.data.incorrect_mission_ids) || []);
+          }
+          renderFinishedPanel(finishedPanel, data);
+        });
+      });
+    }
   }
 
   function renderMissionPanel(data) {

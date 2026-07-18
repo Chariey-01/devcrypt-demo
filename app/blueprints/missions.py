@@ -6,7 +6,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
-from ..models import CodeSubmission, Mission, TeamMCQAnswer, TeamMission
+from ..models import CodeSubmission, Fragment, Mission, TeamMCQAnswer, TeamMission
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
@@ -451,13 +451,12 @@ def run_visible_tests():
     )
 
 
-@missions_bp.route("/final-flag")
+@missions_bp.route("/final-flag/requirements")
 @team_required
-def final_flag():
-    # Server-side gate, never trusts anything the client claims about its own progress: query
-    # this team's actual TeamMission rows for every mission id that was fixed at setup time
-    # (see scripts/derive_final_flag.py) — not "every currently published mission," which could
-    # silently drift after the ciphertext was generated (see final_flag_service.py's docstring).
+def final_flag_requirements():
+    # Tells the frontend which missions to render an entry field for, and confirms the gate
+    # (every required mission actually passed) without revealing anything about fragment
+    # values themselves — those are only ever checked, never returned, by the POST below.
     required_mission_ids = current_app.config.get("FINAL_FLAG_MISSION_IDS") or []
     if not required_mission_ids:
         return jsonify({"error": "Final flag is not configured for this event yet."}), 404
@@ -470,6 +469,52 @@ def final_flag():
     }
     if passed_ids != set(required_mission_ids):
         return jsonify({"error": "Not all required vaults have been secured yet."}), 403
+
+    missions = Mission.query.filter(Mission.id.in_(required_mission_ids)).order_by(Mission.order_index).all()
+    return jsonify({"vaults": [{"mission_id": m.id, "title": m.title} for m in missions]})
+
+
+@missions_bp.route("/final-flag", methods=["POST"])
+@team_required
+def final_flag():
+    # Server-side gate, never trusts anything the client claims about its own progress. Two
+    # independent checks, both required: (1) every required mission actually passed — queried
+    # from this team's own TeamMission rows, not asserted by the client — and (2) the fragment
+    # value the player typed in for each vault matches that team's real, already-recorded
+    # Fragment.cipher_value row for it exactly (the same code already shown to them on their own
+    # cryptogram board/fragment rail — this is a "did you actually collect and transcribe them"
+    # step, not a secret the player has to guess).
+    required_mission_ids = current_app.config.get("FINAL_FLAG_MISSION_IDS") or []
+    if not required_mission_ids:
+        return jsonify({"error": "Final flag is not configured for this event yet."}), 404
+
+    team = current_team()
+    passed_ids = {
+        tm.mission_id
+        for tm in TeamMission.query.filter_by(team_id=team.id).all()
+        if tm.status in ("passed", "overridden") and tm.mission_id in required_mission_ids
+    }
+    if passed_ids != set(required_mission_ids):
+        return jsonify({"error": "Not all required vaults have been secured yet."}), 403
+
+    data = request.get_json(silent=True) or {}
+    submitted = data.get("fragments") or {}
+    real_fragments = {
+        f.mission_id: f.cipher_value
+        for f in Fragment.query.filter(
+            Fragment.team_id == team.id, Fragment.mission_id.in_(required_mission_ids)
+        ).all()
+    }
+
+    wrong = []
+    for mission_id in required_mission_ids:
+        entered = str(submitted.get(str(mission_id), submitted.get(mission_id, ""))).strip().lower()
+        expected = (real_fragments.get(mission_id) or "").strip().lower()
+        if not expected or entered != expected:
+            wrong.append(mission_id)
+
+    if wrong:
+        return jsonify({"error": "One or more fragments don't match.", "incorrect_mission_ids": wrong}), 400
 
     service = FinalFlagService(current_app.config["EVENT_SALT"], current_app.config.get("FINAL_FLAG_CIPHERTEXT"))
     flag = service.reconstruct(required_mission_ids)

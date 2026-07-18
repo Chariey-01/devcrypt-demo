@@ -539,6 +539,10 @@ textarea.mono {
   white-space: pre;
 }
 
+.fragment-invalid {
+  border-color: var(--red) !important;
+}
+
 input:focus, textarea:focus, select:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;

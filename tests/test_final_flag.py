@@ -1,9 +1,11 @@
+import json
+
 import pytest
 
 from app import create_app
 from app.config import Config, engine_options_for
 from app.extensions import db
-from app.models import Mission, Team, TeamMission
+from app.models import Fragment, Mission, Team, TeamMission
 from app.services.final_flag_service import FinalFlagService
 
 TEST_SALT = "test-salt-for-final-flag"
@@ -52,17 +54,28 @@ def _login(client):
     return client.post("/auth/team-login", data={"name": "Alpha", "key": "ALPHA01"})
 
 
-def test_final_flag_denied_before_any_mission_passed(flag_app_and_missions):
+def _pass_all_missions_with_fragments(app, team_id, mission_ids):
+    with app.app_context():
+        for mid in mission_ids:
+            db.session.add(TeamMission(team_id=team_id, mission_id=mid, status="passed"))
+            db.session.add(Fragment(team_id=team_id, mission_id=mid, cipher_value=f"F{mid}:XX"))
+        db.session.commit()
+
+
+def _post_flag(client, fragments):
+    return client.post("/missions/final-flag", data=json.dumps({"fragments": fragments}), content_type="application/json")
+
+
+def test_requirements_denied_before_any_mission_passed(flag_app_and_missions):
     app, mission_ids, team_id = flag_app_and_missions
     client = app.test_client()
     _login(client)
 
-    res = client.get("/missions/final-flag")
+    res = client.get("/missions/final-flag/requirements")
     assert res.status_code == 403
-    assert "flag" not in res.get_json()
 
 
-def test_final_flag_denied_with_only_some_missions_passed(flag_app_and_missions):
+def test_requirements_denied_with_only_some_missions_passed(flag_app_and_missions):
     app, mission_ids, team_id = flag_app_and_missions
     with app.app_context():
         db.session.add(TeamMission(team_id=team_id, mission_id=mission_ids[0], status="passed"))
@@ -70,21 +83,60 @@ def test_final_flag_denied_with_only_some_missions_passed(flag_app_and_missions)
     client = app.test_client()
     _login(client)
 
-    res = client.get("/missions/final-flag")
+    res = client.get("/missions/final-flag/requirements")
     assert res.status_code == 403
-    assert "flag" not in res.get_json()
 
 
-def test_final_flag_reconstructed_once_all_required_missions_passed(flag_app_and_missions):
+def test_requirements_lists_vaults_once_all_missions_passed(flag_app_and_missions):
     app, mission_ids, team_id = flag_app_and_missions
-    with app.app_context():
-        for mid in mission_ids:
-            db.session.add(TeamMission(team_id=team_id, mission_id=mid, status="passed"))
-        db.session.commit()
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
     client = app.test_client()
     _login(client)
 
-    res = client.get("/missions/final-flag")
+    res = client.get("/missions/final-flag/requirements")
+    assert res.status_code == 200
+    returned_ids = [v["mission_id"] for v in res.get_json()["vaults"]]
+    assert returned_ids == mission_ids
+
+
+def test_final_flag_denied_without_entering_fragments(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+
+    res = _post_flag(client, {})
+    assert res.status_code == 400
+    body = res.get_json()
+    assert "flag" not in body
+    assert set(body["incorrect_mission_ids"]) == set(mission_ids)
+
+
+def test_final_flag_denied_with_one_wrong_fragment(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+
+    correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    correct[str(mission_ids[0])] = "WRONG:VALUE"
+
+    res = _post_flag(client, correct)
+    assert res.status_code == 400
+    assert res.get_json()["incorrect_mission_ids"] == [mission_ids[0]]
+
+
+def test_final_flag_reconstructed_with_correct_fragments(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+
+    # Deliberately mixed case / stray whitespace — the server normalizes the same way
+    # cipher_service.solve() does elsewhere in this codebase.
+    correct = {str(mid): f"  f{mid}:xx  " for mid in mission_ids}
+
+    res = _post_flag(client, correct)
     assert res.status_code == 200
     assert res.get_json()["flag"] == REAL_FLAG
 
@@ -100,5 +152,5 @@ def test_final_flag_not_configured_returns_404(app, client):
         db.session.commit()
     client.post("/auth/team-login", data={"name": "Bravo", "key": "BRAVO01"})
 
-    res = client.get("/missions/final-flag")
+    res = client.get("/missions/final-flag/requirements")
     assert res.status_code == 404
