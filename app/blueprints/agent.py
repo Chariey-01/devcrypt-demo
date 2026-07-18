@@ -6,6 +6,7 @@ from flask_login import current_user, login_required
 from ..decorators import roles_required
 from ..extensions import db
 from ..models import Challenge, EvidenceFile, Hint, Mission, TestCase
+from ..sockets import notify_global
 
 agent_bp = Blueprint("agent", __name__, url_prefix="/agent")
 
@@ -328,6 +329,11 @@ def upsert_challenge(mission_id):
     difficulty = data.get("difficulty")
     challenge.difficulty = difficulty if difficulty in ("easy", "medium", "hard") else None
     db.session.commit()
+    # Push-triggers-refresh, same as every other live-data change in this app (missions.py,
+    # security.py) — never carries the new prompt itself, just tells any connected player to
+    # re-fetch /missions/status. Global rather than notify_team(team_id, ...) because an Agent
+    # editing a challenge doesn't know which teams are currently on this mission.
+    notify_global("mission_updated")
     return jsonify(_serialize_mission_detail(mission))
 
 

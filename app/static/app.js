@@ -137,6 +137,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let message = null;
   let draftAnswer = "";
   let testResults = null; // last "Run Visible Tests" result, cleared when the mission changes
+  // Tracks the challenge prompt actually on screen, so refresh() can tell a genuine Agent
+  // edit apart from "nothing changed" while the player is mid-type in the answer field
+  // (renderMissionPanel is skipped in that case to avoid stealing focus/cursor position —
+  // see refresh() below — but the player still needs to know an update is waiting).
+  let lastShownPrompt = null;
 
   function showMessage(text) {
     message = text || null;
@@ -453,6 +458,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     let challengeHtml = "";
+    lastShownPrompt = mission.challenge ? mission.challenge.prompt : null;
     if (mission.mcqs_complete && mission.challenge) {
       const c = mission.challenge;
       challengeHtml = `<p class="section-heading">${icon("terminal", 14)} Mission Action — Submission Panel</p>`;
@@ -568,13 +574,25 @@ document.addEventListener("DOMContentLoaded", () => {
     renderBanners(data);
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);
-    // Skip the mission panel rebuild while the player is actively typing a
-    // submission — it fully replaces #challenge-answer/#code-editor's DOM node every
-    // poll, wiping out whatever they've typed. Everything else above still updates live.
+    // Skip the mission panel rebuild while the player is actively typing a submission —
+    // rebuilding replaces #challenge-answer/#code-editor's DOM node every poll, which would
+    // steal focus/cursor position out from under them (the typed *value* itself already
+    // survives via draftAnswer above, this is purely about not yanking focus mid-keystroke).
+    const promptBanner = document.getElementById("prompt-updated-banner");
     const activeId = document.activeElement && document.activeElement.id;
     if (activeId === "challenge-answer" || activeId === "code-editor") {
+      const newPrompt = data.mission && data.mission.challenge ? data.mission.challenge.prompt : null;
+      if (newPrompt !== null && newPrompt !== lastShownPrompt) {
+        promptBanner.classList.remove("hidden");
+        promptBanner.innerHTML = `${icon("radio-tower", 13)} This challenge was just updated by an Agent. <a href="#" id="prompt-updated-refresh">Click to load the new version</a> (your current draft is kept either way).`;
+        document.getElementById("prompt-updated-refresh").addEventListener("click", (e) => {
+          e.preventDefault();
+          renderMissionPanel(data);
+        });
+      }
       return;
     }
+    promptBanner.classList.add("hidden");
     renderMissionPanel(data);
   }
 

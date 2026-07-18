@@ -171,3 +171,24 @@ def test_already_resolved_mission_does_not_double_emit(app, client):
     received = _event_names(sio.get_received())
     assert received.count("team_update") == 1
     sio.disconnect()
+
+
+def test_agent_challenge_edit_pushes_global_update(app, client):
+    # Confirms the Phase 3 sync fix: an Agent saving a challenge edit now notifies connected
+    # players immediately (event_update -> refresh()) instead of only ever surfacing on the
+    # next 2s poll tick.
+    mission_id, _, _ = _setup(app)
+    anon_client = app.test_client()
+    sio = socketio.test_client(app, flask_test_client=anon_client)
+    assert sio.is_connected()
+
+    res = client.post("/auth/login", data={"email": "agent@test.local", "password": "pw"})
+    assert res.status_code in (302, 200)
+    res = client.put(
+        f"/agent/missions/{mission_id}/challenge",
+        json={"prompt": "Read an integer and print triple it.", "starter_code": "n = int(input())"},
+    )
+    assert res.status_code == 200
+
+    assert "event_update" in _event_names(sio.get_received())
+    sio.disconnect()
