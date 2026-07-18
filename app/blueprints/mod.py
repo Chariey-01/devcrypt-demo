@@ -10,6 +10,7 @@ from ..decorators import roles_required
 from ..extensions import db
 from ..models import Challenge, CodeSubmission, EventLog, Mission, Team, TeamMember, TeamMission, User
 from ..repositories.team_repo import TeamRepository
+from ..services.admin_reset_service import AdminResetService
 from ..services.analytics_service import AnalyticsService
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
@@ -28,6 +29,7 @@ mission_service = MissionService(scoring=scoring_service, cipher=cipher_service,
 analytics_service = AnalyticsService(mission_service=mission_service)
 event_service = EventService()
 team_repo = TeamRepository()
+admin_reset_service = AdminResetService()
 
 
 @mod_bp.route("/health")
@@ -152,6 +154,51 @@ def create_team():
     audit_service.log(current_user, "game_master", "team_created", "team", team.id)
     db.session.commit()
     return jsonify({"id": team.id, "name": team.name, "key": key}), 201
+
+
+@mod_bp.route("/team/<int:team_id>", methods=["PATCH"])
+@login_required
+@roles_required("game_master")
+def rename_team(team_id):
+    team = Team.query.get_or_404(team_id)
+    data = request.get_json(silent=True) or {}
+    new_name = (data.get("name") or "").strip()
+    if not new_name:
+        return jsonify({"error": "name is required."}), 400
+    existing = Team.query.filter(Team.name == new_name, Team.id != team.id).first()
+    if existing:
+        return jsonify({"error": "A team with that name already exists."}), 409
+    old_name = team.name
+    team.name = new_name
+    audit_service.log(current_user, "game_master", "team_renamed", "team", team.id, metadata=f"{old_name} -> {new_name}")
+    db.session.commit()
+    notify_mod("team_renamed")
+    return jsonify({"id": team.id, "name": team.name})
+
+
+@mod_bp.route("/team/<int:team_id>", methods=["DELETE"])
+@login_required
+@roles_required("game_master")
+def delete_team(team_id):
+    team = Team.query.get_or_404(team_id)
+    audit_service.log(current_user, "game_master", "team_deleted", "team", team.id, metadata=team.name)
+    admin_reset_service.delete_team(team)
+    notify_mod("team_deleted")
+    notify_global("leaderboard_refresh")
+    return jsonify({"ok": True})
+
+
+@mod_bp.route("/team/<int:team_id>/reset", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def reset_team(team_id):
+    team = Team.query.get_or_404(team_id)
+    audit_service.log(current_user, "game_master", "team_progress_reset", "team", team.id, metadata=team.name)
+    admin_reset_service.reset_team(team)
+    notify_team(team.id, "team_reset")
+    notify_mod("team_reset")
+    notify_global("leaderboard_refresh")
+    return jsonify({"ok": True})
 
 
 @mod_bp.route("/team/<int:team_id>/member", methods=["POST"])

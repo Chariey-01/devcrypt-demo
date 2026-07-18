@@ -59,7 +59,17 @@
           .join("");
         return `
         <div class="card" style="margin-bottom:0.75rem;">
-          <strong>${icon("users", 13)} ${escapeHtml(t.name)}</strong>
+          <div class="queue-card-header">
+            <strong>${icon("users", 13)} ${escapeHtml(t.name)}</strong>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+              <button type="button" class="ghost" data-reset-team="${t.id}">${icon("rotate-ccw", 12)} Reset Progress</button>
+              <button type="button" class="danger" data-delete-team="${t.id}">${icon("trash-2", 12)} Delete</button>
+            </div>
+          </div>
+          <form class="inline-form" data-rename-team="${t.id}" style="margin-top:0.4rem;">
+            <input type="text" name="name" value="${escapeHtml(t.name)}" required style="width:auto;">
+            <button type="submit" class="ghost">${icon("pencil", 12)} Rename</button>
+          </form>
           <ul style="margin:0.4rem 0;">${memberRows || `<li class="hint-text">No members added.</li>`}</ul>
           <form class="inline-form" data-add-member="${t.id}">
             <input type="text" name="name" placeholder="Member name" required style="width:auto;">
@@ -156,6 +166,47 @@
         const [teamId, memberId] = btn.dataset.removeMember.split(":");
         await api("DELETE", `/mod/team/${teamId}/member/${memberId}`);
         await loadAll();
+      });
+    });
+
+    el.querySelectorAll("[data-rename-team]").forEach((form) => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const teamId = form.dataset.renameTeam;
+        const fd = new FormData(form);
+        try {
+          await api("PATCH", `/mod/team/${teamId}`, { name: fd.get("name") });
+          await loadAll();
+          flash("Team renamed.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-reset-team]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Reset this team's progress? Missions, fragments, clearance stamps, and submissions will be cleared. The team and its members stay.")) return;
+        try {
+          await api("POST", `/mod/team/${btn.dataset.resetTeam}/reset`);
+          await loadAll();
+          flash("Team progress reset.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-delete-team]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this team permanently? This cannot be undone.")) return;
+        try {
+          await api("DELETE", `/mod/team/${btn.dataset.deleteTeam}`);
+          await loadAll();
+          flash("Team deleted.");
+        } catch (err) {
+          flash(err.message);
+        }
       });
     });
 
