@@ -17,12 +17,14 @@ Usage:
     # Against a staging deployment (after running seed.py against it once):
     python3 scripts/verify_deployment.py --url https://your-app.up.railway.app
 
-    # --seed-grading-check: none of the 6 default seed.py missions are auto-graded, so without
-    # this flag "Automated grading" never actually exercises the grading engine — it just
-    # reports "not applicable" every time, which would silently mask a real grading bug. This
-    # flag imports the app directly and inserts one auto-graded mission ahead of Alpha Squad's
-    # queue (requires DATABASE_URL to point at the *same* database --url is serving, e.g. run
-    # this from the same shell you'd run `flask db upgrade`/`deploy_db_setup.py` from):
+    # --seed-grading-check: a fresh team starts at mission 1 ("Discovery Node"), which is
+    # manual-review, not auto-graded — the only auto-graded mission in the default seed data is
+    # the final vault (mission 6), five missions away. Without this flag, "Automated grading"
+    # never actually exercises the grading engine on a fresh run — it just reports "not
+    # applicable," which would silently mask a real grading bug. This flag imports the app
+    # directly and inserts one auto-graded mission ahead of Alpha Squad's queue instead
+    # (requires DATABASE_URL to point at the *same* database --url is serving, e.g. run this
+    # from the same shell you'd run `flask db upgrade`/`deploy_db_setup.py` from):
     python3 scripts/verify_deployment.py --url https://your-app.up.railway.app --seed-grading-check
 
 Exit code 0 if every check passes, 1 otherwise — safe to use as a gate.

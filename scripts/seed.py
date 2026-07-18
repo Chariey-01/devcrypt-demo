@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
-from app.models import Challenge, EvidenceFile, MCQ, MCQOption, Mission, Team, User
+from app.models import Challenge, EvidenceFile, MCQ, MCQOption, Mission, Team, TestCase, User
 
 MISSIONS = [
     {
@@ -296,7 +296,7 @@ MISSIONS = [
     {
         "title": "Metaverse Core — RESTORE",
         "cipher_word": "RESTORE",
-        "type": "flag",
+        "type": "code",
         "booth_id": 6,
         "order_index": 6,
         "time_limit": 900,
@@ -339,11 +339,23 @@ MISSIONS = [
             ),
         ],
         "challenge": {
-            "type": "flag",
-            "prompt": "Enter the master flag to restore the Metaverse Core.",
+            "type": "code",
+            "prompt": (
+                "Read a line of space-separated fragment integrity values (integers) and print "
+                "their sum — the core only restores once every fragment's value is accounted for."
+            ),
             "steps": None,
-            "answer_key": "FLAG{RESTORE}",
-            "hint_text": "The flag format is FLAG{...} and the word inside matches this mission's cipher word.",
+            "answer_key": None,
+            "hint_text": "Split the line on whitespace, cast each piece to an integer, sum them.",
+            "grading_mode": "auto",
+            "starter_code": "values = list(map(int, input().split()))\n",
+            "pass_threshold": 100,
+            "test_cases": [
+                # (name, input_data, expected_output, visibility)
+                ("visible case", "1 2 3 4 5", "15", "visible"),
+                ("hidden case — larger set", "10 20 30 40", "100", "hidden"),
+                ("hidden case — single value", "7", "7", "hidden"),
+            ],
         },
     },
 ]
@@ -409,16 +421,33 @@ def seed_demo():
                     )
 
             challenge = spec["challenge"]
-            db.session.add(
-                Challenge(
-                    mission_id=mission.id,
-                    type=challenge["type"],
-                    prompt=challenge["prompt"],
-                    steps=challenge["steps"],
-                    answer_key=challenge["answer_key"],
-                    hint_text=challenge["hint_text"],
-                )
+            challenge_row = Challenge(
+                mission_id=mission.id,
+                type=challenge["type"],
+                prompt=challenge["prompt"],
+                steps=challenge["steps"],
+                answer_key=challenge["answer_key"],
+                hint_text=challenge["hint_text"],
+                grading_mode=challenge.get("grading_mode", "manual_review"),
+                starter_code=challenge.get("starter_code"),
+                function_signature=challenge.get("function_signature"),
+                pass_threshold=challenge.get("pass_threshold", 100),
             )
+            db.session.add(challenge_row)
+            db.session.flush()
+
+            for tc_index, (tc_name, tc_input, tc_expected, tc_visibility) in enumerate(challenge.get("test_cases", [])):
+                db.session.add(
+                    TestCase(
+                        challenge_id=challenge_row.id,
+                        name=tc_name,
+                        input_data=tc_input,
+                        expected_output=tc_expected,
+                        weight=1,
+                        visibility=tc_visibility,
+                        order_index=tc_index,
+                    )
+                )
 
         db.session.commit()
 
