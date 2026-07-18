@@ -142,6 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // (renderMissionPanel is skipped in that case to avoid stealing focus/cursor position —
   // see refresh() below — but the player still needs to know an update is waiting).
   let lastShownPrompt = null;
+  let finalFlagState = null; // null = not fetched yet, otherwise { flag } or { error }
 
   function showMessage(text) {
     message = text || null;
@@ -344,6 +345,52 @@ document.addEventListener("DOMContentLoaded", () => {
     return { label: "MISSION ACTION", tier: "info" };
   }
 
+  // The flag is never computed client-side and never sent until the server has independently
+  // verified every vault is actually passed (see /missions/final-flag) — this just displays
+  // whatever that endpoint returns, fetched once and cached, not re-requested on every poll.
+  function renderFinishedPanel(finishedPanel, data) {
+    const scoreCard = `
+      <div class="ops-grid" style="margin-top:0.75rem;">
+        <div class="ops-panel">
+          <p class="ops-label">${icon("gauge", 14)} Final Score</p>
+          <p class="ops-value ok">${data.team.score}</p>
+        </div>
+        <div class="ops-panel">
+          <p class="ops-label">${icon("signal", 14)} Integrity</p>
+          <p class="ops-value info">${data.team.integrity}%</p>
+        </div>
+      </div>`;
+
+    let flagSection;
+    if (finalFlagState === null) {
+      flagSection = `<p class="hint-text">${icon("timer", 13)} Reconstructing final flag&hellip;</p>`;
+      api("/missions/final-flag")
+        .then((res) => {
+          finalFlagState = res.ok ? { flag: res.data.flag } : { error: (res.data && res.data.error) || "Unavailable." };
+          renderFinishedPanel(finishedPanel, data);
+        })
+        .catch(() => {
+          finalFlagState = { error: "Could not reach the server." };
+          renderFinishedPanel(finishedPanel, data);
+        });
+    } else if (finalFlagState.flag) {
+      flagSection = `<p class="mono" style="font-size:1.1rem;color:var(--green);margin-top:0.75rem;">${icon(
+        "unlock",
+        16
+      )} ${escapeHtml(finalFlagState.flag)}</p>`;
+    } else {
+      flagSection = `<p class="hint-text">${icon("lock-keyhole", 13)} ${escapeHtml(finalFlagState.error)}</p>`;
+    }
+
+    finishedPanel.innerHTML = `
+      <div class="card">
+        <p class="meta-tag ok">${icon("shield-check", 12)} Core Restored</p>
+        <h2>${icon("unlock", 22)} GRID CORE RESTORED</h2>
+        ${scoreCard}
+        ${flagSection}
+      </div>`;
+  }
+
   function renderMissionPanel(data) {
     const panel = document.getElementById("mission-panel");
     const finishedPanel = document.getElementById("finished-panel");
@@ -351,21 +398,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (data.finished) {
       panel.classList.add("hidden");
       finishedPanel.classList.remove("hidden");
-      finishedPanel.innerHTML = `
-        <div class="card">
-          <p class="meta-tag ok">${icon("shield-check", 12)} Core Restored</p>
-          <h2>${icon("unlock", 22)} METAVERSE CORE RESTORED</h2>
-          <div class="ops-grid" style="margin-top:0.75rem;">
-            <div class="ops-panel">
-              <p class="ops-label">${icon("gauge", 14)} Final Score</p>
-              <p class="ops-value ok">${data.team.score}</p>
-            </div>
-            <div class="ops-panel">
-              <p class="ops-label">${icon("signal", 14)} Integrity</p>
-              <p class="ops-value info">${data.team.integrity}%</p>
-            </div>
-          </div>
-        </div>`;
+      renderFinishedPanel(finishedPanel, data);
       return;
     }
     finishedPanel.classList.add("hidden");

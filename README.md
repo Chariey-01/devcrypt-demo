@@ -1,11 +1,11 @@
-# DevCrypt — Breach the Metaverse
+# DevCrypt — Breach the Grid
 
 A hybrid digital-physical Capture-the-Flag platform for career fairs and hackathons. Teams
-play Cyber Response Units investigating a live "attack" on the Moringa Metaverse — six
+play Cyber Response Units investigating a live "attack" on the Moringa Grid — six
 compromised nodes, each an employer booth, each hiding a different real vulnerability
 (faulty deploy, leaked token, DNS amplification, broken schema, SQL injection, and a final
 locked core). Solving each node reveals a fragment of a live-decoding cryptogram; assembling
-all six lets a team capture the final flag and restore the Metaverse Core.
+all six lets a team capture the final flag and restore the Grid Core.
 
 Four roles, one app: **Player** (team), **Booth Agent** (employer rep), **Security Officer**
 (checkpoint clearance), **Game Master** (event operator).

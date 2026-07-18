@@ -52,6 +52,18 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = engine_options_for(SQLALCHEMY_DATABASE_URI)
     EVENT_SALT = os.getenv("EVENT_SALT", "devcrypt-demo-event-salt")
 
+    # Server-only final-flag material — see app/services/final_flag_service.py and
+    # scripts/derive_final_flag.py. Never set in seed data, never committed, never sent to the
+    # client except via the one gated route once a team has actually finished every vault.
+    FINAL_FLAG_CIPHERTEXT = os.getenv("FINAL_FLAG_CIPHERTEXT") or None
+    # Comma-separated Mission ids that must ALL be passed to unlock the flag — fixed at whatever
+    # set derive_final_flag.py was run against, deliberately NOT "every currently published
+    # mission" (that would silently change the master key, and therefore break decryption of an
+    # already-generated ciphertext, the moment a mission is added/removed/republished later).
+    FINAL_FLAG_MISSION_IDS = [
+        int(x) for x in (os.getenv("FINAL_FLAG_MISSION_IDS") or "").split(",") if x.strip()
+    ]
+
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     # Secure cookies are only sent over HTTPS. The local demo path (SQLite, per DEPLOYMENT.md)

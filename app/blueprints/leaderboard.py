@@ -31,7 +31,7 @@ def data():
         current, _ = mission_service.current_mission_for(team, missions)
         if total_missions and len(missions_done) >= total_missions:
             status = "finished"
-            current_mission = "Metaverse Core Restored"
+            current_mission = "Grid Core Restored"
         elif overridden:
             status = "overridden"
             current_mission = current.title if current else "—"

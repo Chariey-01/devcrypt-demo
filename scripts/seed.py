@@ -294,14 +294,14 @@ MISSIONS = [
         },
     },
     {
-        "title": "Metaverse Core — RESTORE",
+        "title": "Grid Core — RESTORE",
         "cipher_word": "RESTORE",
         "type": "code",
         "booth_id": 6,
         "order_index": 6,
         "time_limit": 900,
         "narrative": (
-            "All five nodes are secured. GhostRoute-7's final foothold is the Metaverse Core "
+            "All five nodes are secured. GhostRoute-7's final foothold is the Grid Core "
             "itself. Two security clearance stamps are required to attempt restoration."
         ),
         "evidence": (

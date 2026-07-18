@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
@@ -10,6 +10,7 @@ from ..models import CodeSubmission, Mission, TeamMCQAnswer, TeamMission
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
+from ..services.final_flag_service import FinalFlagService
 from ..services.grading_service import GradingEngine
 from ..services.mission_service import MissionService
 from ..services.scoring_service import ScoringService
@@ -31,7 +32,7 @@ NARRATIVE = {
     "challenge_pass": "NODE SECURED. FRAGMENT ACQUIRED.",
     "challenge_fail": "PATCH REJECTED — VULNERABILITY STILL ACTIVE.",
     "challenge_queued": "SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.",
-    "flag_final": "METAVERSE CORE RESTORED.",
+    "flag_final": "GRID CORE RESTORED.",
     "cooldown": "NODE ON COOLDOWN.",
 }
 
@@ -448,3 +449,33 @@ def run_visible_tests():
             "total_tests": grading_result.total_tests,
         }
     )
+
+
+@missions_bp.route("/final-flag")
+@team_required
+def final_flag():
+    # Server-side gate, never trusts anything the client claims about its own progress: query
+    # this team's actual TeamMission rows for every mission id that was fixed at setup time
+    # (see scripts/derive_final_flag.py) — not "every currently published mission," which could
+    # silently drift after the ciphertext was generated (see final_flag_service.py's docstring).
+    required_mission_ids = current_app.config.get("FINAL_FLAG_MISSION_IDS") or []
+    if not required_mission_ids:
+        return jsonify({"error": "Final flag is not configured for this event yet."}), 404
+
+    team = current_team()
+    passed_ids = {
+        tm.mission_id
+        for tm in TeamMission.query.filter_by(team_id=team.id).all()
+        if tm.status in ("passed", "overridden") and tm.mission_id in required_mission_ids
+    }
+    if passed_ids != set(required_mission_ids):
+        return jsonify({"error": "Not all required vaults have been secured yet."}), 403
+
+    service = FinalFlagService(current_app.config["EVENT_SALT"], current_app.config.get("FINAL_FLAG_CIPHERTEXT"))
+    flag = service.reconstruct(required_mission_ids)
+    if flag is None:
+        return jsonify({"error": "Final flag is not configured for this event yet."}), 404
+
+    audit_service.log(None, "team", "final_flag_reconstructed", "team", team.id, metadata=team.name)
+    db.session.commit()
+    return jsonify({"flag": flag})
