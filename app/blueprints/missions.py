@@ -526,9 +526,22 @@ def final_flag():
     if wrong:
         return jsonify({"error": "One or more fragments don't match.", "incorrect_mission_ids": wrong}), 400
 
-    service = FinalFlagService(current_app.config["EVENT_SALT"], current_app.config.get("FINAL_FLAG_CIPHERTEXT"))
+    ciphertext = current_app.config.get("FINAL_FLAG_CIPHERTEXT")
+    service = FinalFlagService(current_app.config["EVENT_SALT"], ciphertext)
     flag = service.reconstruct(required_mission_ids)
     if flag is None:
+        if ciphertext:
+            # Configured but didn't decrypt to valid text — an EVENT_SALT that doesn't match
+            # what derive_final_flag.py was run with (rotated since, or never matched), not a
+            # missing-config situation. Logged loudly since this is an operator problem, not a
+            # team one — the team-facing message stays generic on purpose (no internals).
+            logger.error(
+                "final_flag reconstruction produced invalid UTF-8 for team=%r mission_ids=%s -- "
+                "EVENT_SALT likely doesn't match the one derive_final_flag.py was run with.",
+                team.name,
+                required_mission_ids,
+            )
+            return jsonify({"error": "Final flag could not be verified — notify a Game Master."}), 500
         return jsonify({"error": "Final flag is not configured for this event yet."}), 404
 
     audit_service.log(None, "team", "final_flag_reconstructed", "team", team.id, metadata=team.name)

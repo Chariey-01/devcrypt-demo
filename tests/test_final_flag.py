@@ -141,6 +141,26 @@ def test_final_flag_reconstructed_with_correct_fragments(flag_app_and_missions):
     assert res.get_json()["flag"] == REAL_FLAG
 
 
+def test_final_flag_wrong_salt_fails_closed_instead_of_returning_garbage(flag_app_and_missions):
+    # Simulates exactly the production incident this guards against: FINAL_FLAG_CIPHERTEXT was
+    # generated under one EVENT_SALT, but the server is now running with a different one (rotated,
+    # or never matched in the first place). Before the fix, reconstruct() would decode with
+    # errors="replace" and hand the team mojibake as if it were their real flag with a 200 OK.
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    app.config["EVENT_SALT"] = "a-completely-different-salt-than-the-one-used-to-encrypt"
+    client = app.test_client()
+    _login(client)
+
+    correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    res = _post_flag(client, correct)
+
+    assert res.status_code == 500
+    body = res.get_json()
+    assert "flag" not in body
+    assert "Game Master" in body["error"]
+
+
 def test_final_flag_not_configured_returns_404(app, client):
     # The shared conftest TestConfig has no FINAL_FLAG_CIPHERTEXT set at all — confirms the
     # route fails closed (never fabricates or falls back to any default flag value) rather than

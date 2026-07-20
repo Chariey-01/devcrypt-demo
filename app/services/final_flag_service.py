@@ -58,11 +58,25 @@ class FinalFlagService:
 
     def reconstruct(self, mission_ids):
         """Request-time reconstruction. Returns None if no ciphertext is configured at all
-        (e.g. local dev before an operator has run derive_final_flag.py) — the caller decides
-        how to present that, never fabricates a fallback flag value."""
+        (e.g. local dev before an operator has run derive_final_flag.py), OR if the decrypted
+        bytes aren't valid UTF-8 — the caller decides how to present either case, but this never
+        fabricates or hands out a garbled fallback flag value.
+
+        A wrong EVENT_SALT (rotated after derive_final_flag.py ran) or a mission_ids mismatch
+        produces a keystream that's effectively random relative to the real one, so the XOR
+        output is effectively random bytes too. Multi-byte UTF-8 has strict continuation-byte
+        structure, so random bytes fail strict decoding with overwhelming probability — that
+        failure is the mechanical fingerprint of a config mismatch, not a real flag. Failing
+        closed here (instead of decoding with errors="replace" and returning mojibake as if it
+        were the real flag) is what actually prevents that class of bug from silently reaching a
+        team, rather than just moving the garbling from the server log to their screen.
+        """
         if self.ciphertext is None:
             return None
         key = self.master_key(mission_ids)
         keystream = self._keystream(key, len(self.ciphertext))
         plaintext = bytes(c ^ k for c, k in zip(self.ciphertext, keystream))
-        return plaintext.decode("utf-8", errors="replace")
+        try:
+            return plaintext.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
