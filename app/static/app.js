@@ -151,6 +151,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // the ordered [{mission_id, title}] list to render one input per. flag: set once the server
   // has actually returned it. fieldErrors: mission_ids the last submit attempt got wrong.
   const finalFlagState = { vaults: null, flag: null, formError: null, fieldErrors: new Set() };
+  // Typed-but-not-submitted fragment values, keyed by mission_id. renderFinishedPanel rebuilds
+  // the whole form's innerHTML on every poll/socket update, which would otherwise wipe these
+  // inputs mid-keystroke -- restored into every render below regardless of what triggered it,
+  // and only ever cleared on a successful unlock (never on a failed attempt or a stray render).
+  const fragmentDrafts = {};
 
   function showMessage(text) {
     message = text || null;
@@ -485,7 +490,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <label for="fragment-${v.mission_id}">${escapeHtml(v.title)}</label>
         <input type="text" id="fragment-${v.mission_id}" data-mission-id="${v.mission_id}"
           class="mono${finalFlagState.fieldErrors.has(v.mission_id) ? " fragment-invalid" : ""}"
-          placeholder="e.g. AB:CD" autocomplete="off">`
+          placeholder="e.g. AB:CD" autocomplete="off" value="${escapeHtml(fragmentDrafts[v.mission_id] || "")}">`
         )
         .join("");
       unlockSection = `
@@ -510,6 +515,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const form = document.getElementById("fragment-unlock-form");
     if (form) {
+      finalFlagState.vaults.forEach((v) => {
+        const input = document.getElementById(`fragment-${v.mission_id}`);
+        input.addEventListener("input", () => {
+          fragmentDrafts[v.mission_id] = input.value;
+        });
+      });
+
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const submitBtn = form.querySelector('button[type="submit"]');
@@ -523,6 +535,7 @@ document.addEventListener("DOMContentLoaded", () => {
             finalFlagState.flag = res.data.flag;
             finalFlagState.formError = null;
             finalFlagState.fieldErrors = new Set();
+            Object.keys(fragmentDrafts).forEach((key) => delete fragmentDrafts[key]);
           } else {
             finalFlagState.formError = (res.data && res.data.error) || "Unlock failed.";
             finalFlagState.fieldErrors = new Set((res.data && res.data.incorrect_mission_ids) || []);
@@ -761,12 +774,17 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);
     // Skip the mission panel rebuild while the player is actively typing a submission —
-    // rebuilding replaces #challenge-answer/#code-editor's DOM node every poll, which would
-    // steal focus/cursor position out from under them (the typed *value* itself already
-    // survives via draftAnswer above, this is purely about not yanking focus mid-keystroke).
+    // rebuilding replaces #challenge-answer/#code-editor/#fragment-N's DOM node every poll,
+    // which would steal focus/cursor position out from under them (the typed *value* itself
+    // already survives via draftAnswer/fragmentDrafts above, this is purely about not yanking
+    // focus mid-keystroke).
     const promptBanner = document.getElementById("prompt-updated-banner");
     const activeId = document.activeElement && document.activeElement.id;
-    if (activeId === "challenge-answer" || activeId === "code-editor") {
+    if (
+      activeId === "challenge-answer" ||
+      activeId === "code-editor" ||
+      (activeId && activeId.startsWith("fragment-"))
+    ) {
       const newPrompt = data.mission && data.mission.challenge ? data.mission.challenge.prompt : null;
       if (newPrompt !== null && newPrompt !== lastShownPrompt) {
         promptBanner.classList.remove("hidden");
