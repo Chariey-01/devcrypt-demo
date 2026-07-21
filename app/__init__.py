@@ -55,6 +55,22 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
 
     db.init_app(app)
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+        # SQLite does not enforce foreign key constraints by default, unlike Postgres (what
+        # actually runs in production). Without this, a bug that violates a real FK constraint
+        # — like AdminResetService's bulk-delete-bypasses-cascade incident, caught live against
+        # production Postgres after passing every local test — passes silently here too, and the
+        # first place it's ever actually caught is production. This makes local/test behavior
+        # match production's real constraint enforcement instead of being quietly more lenient.
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        @event.listens_for(Engine, "connect")
+        def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     migrate.init_app(app, db)
     socketio.init_app(app, cors_allowed_origins=app.config["SOCKETIO_CORS_ALLOWED_ORIGINS"])
     bcrypt.init_app(app)

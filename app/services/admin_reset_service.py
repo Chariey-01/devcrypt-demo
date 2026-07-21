@@ -1,15 +1,32 @@
 from ..extensions import db
-from ..models import ClearanceStamp, CodeSubmission, EventLog, Fragment, LeaderboardSnapshot, Team, TeamMission
+from ..models import (
+    ClearanceStamp,
+    CodeSubmission,
+    EventLog,
+    Fragment,
+    LeaderboardSnapshot,
+    Team,
+    TeamMCQAnswer,
+    TeamMission,
+)
 
 
 class AdminResetService:
     def _clear_team_progress(self, team):
-        # CodeSubmission has no cascade from TeamMission (it's a plain backref, not
-        # cascade="all, delete-orphan") — deleting TeamMission rows first would violate
-        # its NOT NULL team_mission_id FK, so submissions must go first.
+        # Both CodeSubmission and TeamMCQAnswer have cascade="all, delete-orphan" declared on
+        # the ORM *relationship* (TeamMission.mcq_answers / the CodeSubmission backref) — but
+        # that only fires on an ORM-level session.delete(), never on Query.delete(), which
+        # issues a raw bulk DELETE that bypasses the ORM (and therefore cascades) entirely.
+        # Confirmed live: this exact gap passed every local test (SQLite doesn't enforce FKs
+        # by default) and then threw a real ForeignKeyViolation the first time it ran against
+        # production Postgres, which does. Both children must be deleted explicitly, in FK
+        # order, before their parent TeamMission row.
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
             CodeSubmission.query.filter(CodeSubmission.team_mission_id.in_(team_mission_ids)).delete(
+                synchronize_session=False
+            )
+            TeamMCQAnswer.query.filter(TeamMCQAnswer.team_mission_id.in_(team_mission_ids)).delete(
                 synchronize_session=False
             )
         TeamMission.query.filter_by(team_id=team.id).delete(synchronize_session=False)
