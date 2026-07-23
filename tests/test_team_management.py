@@ -5,11 +5,8 @@ from app.models import (
     EventLog,
     Fragment,
     LeaderboardSnapshot,
-    MCQ,
-    MCQOption,
     Mission,
     Team,
-    TeamMCQAnswer,
     TeamMember,
     TeamMission,
     User,
@@ -39,22 +36,12 @@ def _setup(app):
         db.session.add(team_mission)
         db.session.flush()
 
-        mcq = MCQ(mission_id=mission.id, question_text="Q?", order_index=0)
-        db.session.add(mcq)
-        db.session.flush()
-        option = MCQOption(mcq_id=mcq.id, option_text="A", is_correct=True)
-        db.session.add(option)
-        db.session.flush()
-        # TeamMCQAnswer is the FK relationship that AdminResetService's bulk-delete originally
+        # CodeSubmission is the FK relationship that AdminResetService's bulk-delete originally
         # missed (cascade="all, delete-orphan" is declared on the ORM relationship, but bulk
         # Query.delete() bypasses the ORM entirely and never triggers it) — passed silently
         # under SQLite's default lenient FK enforcement, then threw a real ForeignKeyViolation
         # the first time it ran against production Postgres. Included here so this exact class
         # of bug can never pass a local test run again.
-        db.session.add(
-            TeamMCQAnswer(team_mission_id=team_mission.id, mcq_id=mcq.id, selected_option_id=option.id, is_correct=True)
-        )
-
         db.session.add(CodeSubmission(team_mission_id=team_mission.id, code="print(1)", mode="submit", passed=True))
         db.session.add(Fragment(team_id=team.id, mission_id=mission.id, cipher_value="AB:CD"))
         db.session.add(ClearanceStamp(team_id=team.id, officer_id=officer.id, checkpoint_id=1))
@@ -105,7 +92,6 @@ def test_delete_team_cascades_all_child_rows(app, client):
         assert ClearanceStamp.query.filter_by(team_id=team_id).count() == 0
         assert TeamMember.query.filter_by(team_id=team_id).count() == 0
         assert CodeSubmission.query.count() == 0  # was tied to the deleted team's only TeamMission
-        assert TeamMCQAnswer.query.count() == 0
         # Mission itself (event content, not team progress) must survive.
         assert Mission.query.get(mission_id) is not None
 
@@ -128,7 +114,6 @@ def test_reset_team_clears_progress_but_keeps_team_and_members(app, client):
         assert Fragment.query.filter_by(team_id=team_id).count() == 0
         assert ClearanceStamp.query.filter_by(team_id=team_id).count() == 0
         assert CodeSubmission.query.count() == 0
-        assert TeamMCQAnswer.query.count() == 0
         # Team identity and roster survive a progress reset.
         assert TeamMember.query.filter_by(team_id=team_id).count() == 1
         assert Mission.query.get(mission_id) is not None

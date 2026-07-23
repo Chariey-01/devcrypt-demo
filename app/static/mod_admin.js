@@ -114,6 +114,7 @@
           <option value="game_master">Game Master password</option>
         </select>
         <input type="text" name="name" placeholder="Team name or staff email" required style="width:auto;">
+        <input type="text" name="full_name" placeholder="Full name (staff only, optional)" style="width:auto;">
         <button type="submit">${icon("key", 13)} Generate + QR</button>
       </form>
       <button type="button" class="danger" id="reset-all-teams-btn" style="margin-bottom:1rem;">${icon("rotate-ccw", 13)} Reset ALL Teams (clears every team's progress + activity log)</button>
@@ -140,7 +141,9 @@
         lastCredential = await api("POST", "/mod/credentials/generate", {
           kind: fd.get("kind"),
           name: fd.get("name"),
+          full_name: fd.get("full_name"),
         });
+        e.target.reset();
         await loadAll();
       } catch (err) {
         flash(err.message);
@@ -246,17 +249,48 @@
     });
   }
 
+  let agentSearchQuery = "";
+
+  function fmtLastLogin(iso) {
+    if (!iso) return "Never logged in";
+    return new Date(iso + "Z").toLocaleString();
+  }
+
   function renderAgentOverview() {
     const el = document.getElementById("agent-overview");
     if (!el) return;
-    const rows = agents
+
+    const q = agentSearchQuery.trim().toLowerCase();
+    const visibleAgents = q
+      ? agents.filter(
+          (a) =>
+            (a.email || "").toLowerCase().includes(q) ||
+            (a.full_name || "").toLowerCase().includes(q)
+        )
+      : agents;
+
+    const rows = visibleAgents
       .map((a) => {
         const missionList = a.missions.length
           ? a.missions.map((m) => `<li>${escapeHtml(m.title)} — <span class="badge">${m.grading_mode || "not configured"}</span></li>`).join("")
           : `<li class="hint-text">No booth assigned yet.</li>`;
         return `
         <div class="card" style="margin-bottom:0.75rem;">
-          <strong>${icon("flame-kindling", 13)} ${escapeHtml(a.email)}</strong>
+          <div class="queue-card-header">
+            <strong>${icon("flame-kindling", 13)} ${escapeHtml(a.full_name || a.email)}</strong>
+            <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+              <span class="badge ${a.is_active ? "badge-active" : "badge-not_started"}">${a.is_active ? "Active" : "Inactive"}</span>
+              <button type="button" class="ghost" data-reset-agent-password="${a.id}" data-agent-email="${escapeHtml(a.email)}">${icon("key", 12)} Reset Password</button>
+              <button type="button" class="ghost" data-toggle-agent="${a.id}" data-active="${a.is_active}">${a.is_active ? icon("lock", 12) + " Deactivate" : icon("unlock", 12) + " Activate"}</button>
+              <button type="button" class="danger" data-delete-agent="${a.id}">${icon("trash-2", 12)} Delete</button>
+            </div>
+          </div>
+          <p class="hint-text">${escapeHtml(a.email)} — last login: ${escapeHtml(fmtLastLogin(a.last_login_at))}</p>
+          <form class="inline-form" data-edit-agent="${a.id}" style="margin-top:0.4rem;">
+            <input type="text" name="full_name" placeholder="Full name" value="${escapeHtml(a.full_name || "")}" style="width:auto;">
+            <input type="email" name="email" value="${escapeHtml(a.email)}" required style="width:auto;">
+            <button type="submit" class="ghost">${icon("pencil", 12)} Save</button>
+          </form>
           <ul style="margin:0.4rem 0;">${missionList}</ul>
           <form class="inline-form" data-assign-agent="${a.id}">
             <select name="mission_id" style="width:auto;">
@@ -268,7 +302,9 @@
         </div>`;
       })
       .join("");
-    el.innerHTML = rows || `<p class="hint-text">No booth agents on file yet.</p>`;
+    el.innerHTML =
+      rows ||
+      `<p class="hint-text">${agents.length ? "No booth agents match that search." : "No booth agents on file yet."}</p>`;
 
     el.querySelectorAll("[data-assign-agent]").forEach((form) => {
       form.addEventListener("submit", async (e) => {
@@ -277,8 +313,71 @@
         const fd = new FormData(form);
         const missionId = fd.get("mission_id");
         if (!missionId) return;
-        await api("POST", `/mod/mission/${missionId}/assign-agent`, { agent_id: Number(agentId) });
-        await loadAll();
+        try {
+          await api("POST", `/mod/mission/${missionId}/assign-agent`, { agent_id: Number(agentId) });
+          await loadAll();
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-edit-agent]").forEach((form) => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const agentId = form.dataset.editAgent;
+        const fd = new FormData(form);
+        try {
+          await api("PUT", `/mod/agents/${agentId}`, {
+            full_name: fd.get("full_name"),
+            email: fd.get("email"),
+          });
+          await loadAll();
+          flash("Agent updated.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-toggle-agent]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const agentId = btn.dataset.toggleAgent;
+        const isActive = btn.dataset.active === "true";
+        if (isActive && !confirm("Deactivate this agent? They'll be logged out of any open session immediately and can't log back in until reactivated.")) return;
+        try {
+          await api("POST", `/mod/agents/${agentId}/active`, { is_active: !isActive });
+          await loadAll();
+          flash(isActive ? "Agent deactivated." : "Agent activated.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-reset-agent-password]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const email = btn.dataset.agentEmail;
+        if (!confirm(`Generate a new password for ${email}? Their current password stops working immediately.`)) return;
+        try {
+          lastCredential = await api("POST", "/mod/credentials/generate", { kind: "booth_agent", name: email });
+          renderTeamAdmin();
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+
+    el.querySelectorAll("[data-delete-agent]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this agent permanently? This only works if they own no booths. This cannot be undone.")) return;
+        try {
+          await api("DELETE", `/mod/agents/${btn.dataset.deleteAgent}`);
+          await loadAll();
+          flash("Agent deleted.");
+        } catch (err) {
+          flash(err.message);
+        }
       });
     });
   }
@@ -349,6 +448,14 @@
     socket.on("mod_update", () => {
       refreshSubmissions().catch(() => {});
       refreshActivity().catch(() => {});
+    });
+  }
+
+  const agentSearchInput = document.getElementById("agent-search");
+  if (agentSearchInput) {
+    agentSearchInput.addEventListener("input", () => {
+      agentSearchQuery = agentSearchInput.value;
+      renderAgentOverview();
     });
   }
 

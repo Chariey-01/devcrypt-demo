@@ -1,8 +1,10 @@
 import logging
+from datetime import datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 
+from ..extensions import db
 from ..models import User
 from ..repositories.team_repo import TeamRepository
 
@@ -11,7 +13,7 @@ team_repo = TeamRepository()
 logger = logging.getLogger("devcrypt.auth")
 
 STAFF_DESTINATIONS = {
-    "booth_agent": "booth.select_booth",
+    "booth_agent": "agent.dashboard",
     "security_officer": "security.dashboard",
     "game_master": "mod.dashboard",
 }
@@ -48,7 +50,13 @@ def login():
             logger.warning("staff login failed email=%r", email)
             flash("Invalid email or password.", "error")
             return render_template("auth/login.html"), 401
+        if not user.is_active:
+            logger.warning("staff login rejected — deactivated account email=%r", email)
+            flash("This account has been deactivated. Contact your Game Master.", "error")
+            return render_template("auth/login.html"), 401
         login_user(user)
+        user.last_login_at = datetime.utcnow()
+        db.session.commit()
         logger.info("staff login ok email=%r role=%s user_id=%s", user.email, user.role, user.id)
         return redirect(url_for(STAFF_DESTINATIONS.get(user.role, "home")))
     return render_template("auth/login.html")

@@ -6,7 +6,7 @@ from flask import Blueprint, current_app, jsonify, render_template, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
-from ..models import CodeSubmission, Fragment, Mission, TeamMCQAnswer, TeamMission
+from ..models import CodeSubmission, Fragment, Mission, TeamKnowledgeAnswer, TeamMission
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
@@ -27,13 +27,12 @@ grading_engine = GradingEngine()
 audit_service = AuditService()
 
 NARRATIVE = {
-    "mcq_correct": "CIPHER LETTER DECODED",
-    "mcq_wrong": "SIGNAL UNCLEAR — NODE STILL COMPROMISED",
     "challenge_pass": "NODE SECURED. FRAGMENT ACQUIRED.",
     "challenge_fail": "PATCH REJECTED — VULNERABILITY STILL ACTIVE.",
-    "challenge_queued": "SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.",
     "flag_final": "GRID CORE RESTORED.",
     "cooldown": "NODE ON COOLDOWN.",
+    "knowledge_correct": "CIPHER CLUE DECODED.",
+    "knowledge_wrong": "INCORRECT — NO CLUE REVEALED.",
 }
 
 
@@ -43,26 +42,25 @@ def play():
     return render_template("player/dashboard.html")
 
 
-def _serialize_mcq(mcq, team_mission):
-    answered = None
-    if team_mission:
-        answered = next((a for a in team_mission.mcq_answers if a.mcq_id == mcq.id), None)
-    return {
-        "id": mcq.id,
-        "question_text": mcq.question_text,
-        "options": [{"id": o.id, "option_text": o.option_text} for o in mcq.options],
-        "answered": answered is not None,
-        "was_correct": answered.is_correct if answered else None,
-        "selected_option_id": answered.selected_option_id if answered else None,
-    }
-
-
 def _hint_text(challenge):
     # Agent-authored hints (Hint rows) take precedence; legacy single hint_text is the
     # fallback for missions that predate the multi-hint authoring flow.
     if challenge.hints:
         return challenge.hints[0].text
     return challenge.hint_text
+
+
+def _serialize_knowledge_question(question, team_mission):
+    answered = None
+    if team_mission:
+        answered = next((a for a in team_mission.knowledge_answers if a.question_id == question.id), None)
+    return {
+        "id": question.id,
+        "question_text": question.question_text,
+        "options": [{"id": o.id, "option_text": o.option_text} for o in question.options],
+        "answered": answered is not None,
+        "was_correct": answered.is_correct if answered else None,
+    }
 
 
 def _serialize_grading_results(results):
@@ -82,23 +80,27 @@ def _serialize_grading_results(results):
 
 
 def _serialize_challenge(challenge, team_mission):
-    options = None
-    if challenge.type == "mcq" and challenge.steps:
-        options = [line.strip() for line in challenge.steps.splitlines() if line.strip()]
     payload = {
         "type": challenge.type,
         "prompt": challenge.prompt,
-        "options": options,
         "hint_text": _hint_text(challenge) if (team_mission and team_mission.hint_used) else None,
         "grading_mode": challenge.grading_mode,
     }
     if challenge.grading_mode == "auto":
+        last_submission = None
+        if team_mission:
+            last_submission = (
+                CodeSubmission.query.filter_by(team_mission_id=team_mission.id, mode="submit")
+                .order_by(CodeSubmission.id.desc())
+                .first()
+            )
         payload.update(
             {
                 "title": challenge.title,
                 "language": challenge.language,
                 "function_signature": challenge.function_signature,
                 "starter_code": challenge.starter_code,
+                "last_submitted_code": last_submission.code if last_submission else None,
                 "max_attempts": challenge.max_attempts,
                 "attempts_used": team_mission.attempts if team_mission else 0,
             }
@@ -125,7 +127,7 @@ def status():
     next_mission_payload = None
     for i, m in enumerate(ordered_missions):
         existing = team_missions_by_mission_id.get(m.id)
-        if existing and existing.status in ("passed", "overridden"):
+        if existing and existing.status in ("passed", "overridden", "soft_locked"):
             tl_status = existing.status
         elif m.id == current_mission_id:
             tl_status = "current"
@@ -134,7 +136,7 @@ def status():
         else:
             tl_status = "not_started"
         timeline.append({"mission_id": m.id, "title": m.title, "status": tl_status})
-    booths_completed = sum(1 for t in timeline if t["status"] in ("passed", "overridden"))
+    booths_completed = sum(1 for t in timeline if t["status"] in ("passed", "overridden", "soft_locked"))
 
     payload = {
         "timeline": timeline,
@@ -142,6 +144,7 @@ def status():
         "booths_completed": booths_completed,
         "booths_total": len(missions),
         "event_status": state.status,
+        "soft_lock_min_attempts": state.soft_lock_min_attempts,
         "broadcast": (
             {"message": state.broadcast_message, "at": state.broadcast_at.isoformat()}
             if state.broadcast_message
@@ -179,24 +182,34 @@ def status():
             "status": team_mission.status,
             "attempts": team_mission.attempts,
             "penalty_remaining": remaining_penalty,
+            # Frozen the instant a deciding submission arrived — once present, the frontend
+            # must show these instead of computing a live countdown from started_at, and must
+            # never let grading/review time move them.
+            "submitted_at": team_mission.submitted_at.isoformat() if team_mission.submitted_at else None,
+            "elapsed_seconds": team_mission.elapsed_seconds,
+            "time_remaining_frozen": team_mission.time_remaining,
+            "submission_status": team_mission.submission_status,
+            "grading_status": team_mission.grading_status,
             "evidence_files": [
                 {"label": e.label, "file_type": e.file_type, "content": e.content}
                 for e in mission.evidence_files
             ],
-            "mcqs": [_serialize_mcq(m, team_mission) for m in mission.mcqs],
-            "mcqs_complete": len(team_mission.mcq_answers) >= len(mission.mcqs),
             "challenge": _serialize_challenge(mission.challenge, team_mission)
             if mission.challenge
             else None,
             "pending_review": bool(team_mission.submission_text),
+            "knowledge_questions": [
+                _serialize_knowledge_question(q, team_mission) for q in mission.knowledge_questions
+            ],
+            "knowledge_check_complete": len(team_mission.knowledge_answers) >= len(mission.knowledge_questions),
         }
 
     return jsonify(payload)
 
 
-@missions_bp.route("/mcq/<int:mcq_id>/answer", methods=["POST"])
+@missions_bp.route("/knowledge-check/<int:question_id>/answer", methods=["POST"])
 @team_required
-def answer_mcq(mcq_id):
+def answer_knowledge_question(question_id):
     team = current_team()
     state = event_service.get_state()
     if state.status != "running":
@@ -207,18 +220,20 @@ def answer_mcq(mcq_id):
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
 
-    mcq = next((m for m in mission.mcqs if m.id == mcq_id), None)
-    if mcq is None:
+    question = next((q for q in mission.knowledge_questions if q.id == question_id), None)
+    if question is None:
         return jsonify({"error": "That question does not belong to your current mission."}), 404
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
 
-    existing = TeamMCQAnswer.query.filter_by(team_mission_id=team_mission.id, mcq_id=mcq.id).first()
+    existing = TeamKnowledgeAnswer.query.filter_by(
+        team_mission_id=team_mission.id, question_id=question.id
+    ).first()
     if existing:
         return jsonify(
             {
                 "correct": existing.is_correct,
-                "message": NARRATIVE["mcq_correct"] if existing.is_correct else NARRATIVE["mcq_wrong"],
+                "message": NARRATIVE["knowledge_correct"] if existing.is_correct else NARRATIVE["knowledge_wrong"],
                 "already_answered": True,
             }
         )
@@ -229,27 +244,28 @@ def answer_mcq(mcq_id):
         option_id = int(raw_option_id)
     except (TypeError, ValueError):
         return jsonify({"error": "option_id is required."}), 400
-    option = next((o for o in mcq.options if o.id == option_id), None)
+    option = next((o for o in question.options if o.id == option_id), None)
     if option is None:
         return jsonify({"error": "Invalid option."}), 400
 
-    answer = TeamMCQAnswer(
+    answer = TeamKnowledgeAnswer(
         team_mission_id=team_mission.id,
-        mcq_id=mcq.id,
+        question_id=question.id,
         selected_option_id=option.id,
         is_correct=option.is_correct,
     )
     db.session.add(answer)
 
     if option.is_correct:
-        scoring_service.score_mcq_correct(team, team_mission)
+        db.session.refresh(team, with_for_update=True)
+        scoring_service.score_knowledge_correct(team, team_mission)
 
     db.session.commit()
 
     return jsonify(
         {
             "correct": option.is_correct,
-            "message": NARRATIVE["mcq_correct"] if option.is_correct else NARRATIVE["mcq_wrong"],
+            "message": NARRATIVE["knowledge_correct"] if option.is_correct else NARRATIVE["knowledge_wrong"],
         }
     )
 
@@ -269,9 +285,12 @@ def submit_challenge():
 
     challenge = mission.challenge
     team_mission = mission_service.get_or_create_team_mission(team, mission)
-
-    if len(team_mission.mcq_answers) < len(mission.mcqs):
-        return jsonify({"error": "Answer all threat assessment questions first."}), 400
+    if len(team_mission.knowledge_answers) < len(mission.knowledge_questions):
+        return jsonify({"error": "Complete the Knowledge Check before submitting."}), 400
+    # Captured before any grading happens below — this, not whenever the response finally gets
+    # sent, is the team's official submission instant (mission_service.freeze_submission uses
+    # it verbatim), so grading time can never inflate a team's recorded completion time.
+    received_at = datetime.utcnow()
 
     if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
         remaining = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
@@ -279,17 +298,15 @@ def submit_challenge():
 
     data = request.get_json(silent=True) or {}
     answer = data.get("answer", request.form.get("answer", ""))
-    # Auto-graded submissions arrive as {"code": ...}, not {"answer": ...} — folding it in here
-    # (rather than only inside the "auto" branch below) means the manual-review fallback below
-    # still captures the actual submitted code when auto_grading_disabled reroutes an
-    # otherwise-auto-graded challenge into that path, instead of silently discarding it.
+    # Auto-graded submissions arrive as {"code": ...}, not {"answer": ...}.
     answer = data.get("code", answer)
 
-    if challenge.grading_mode == "auto" and not state.auto_grading_disabled:
+    if challenge.grading_mode == "auto":
         if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
             return jsonify({"error": "No attempts remaining for this challenge."}), 403
 
         code = data.get("code", answer)
+        logger.info("grading started team=%r mission=%r mode=submit", team.name, mission.title)
         grading_result = grading_engine.run_all_tests(challenge, code)
         logger.info(
             "submission graded team=%r mission=%r passed=%s percent=%s tests=%s/%s",
@@ -327,7 +344,9 @@ def submit_challenge():
         )
 
         if grading_result.passed_threshold:
-            mission_service.complete_mission(team, team_mission, mission, "passed", grading_result=grading_result)
+            mission_service.complete_mission(
+                team, team_mission, mission, "passed", grading_result=grading_result, submitted_at=received_at
+            )
             return jsonify(
                 {
                     "correct": True,
@@ -338,6 +357,8 @@ def submit_challenge():
                 }
             )
 
+        db.session.refresh(team, with_for_update=True)
+        scoring_service.score_auto_graded_partial(team, team_mission, grading_result)
         scoring_service.apply_retry_penalty(team, team_mission)
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
         db.session.commit()
@@ -353,23 +374,16 @@ def submit_challenge():
             }
         )
 
-    # Auto-graded challenges enforce max_attempts above; these two paths (manual-review "code"
-    # and flag/cipher) previously had no cap at all beyond the 60s cooldown, so a team could
-    # resubmit indefinitely once the cooldown passed. Same opt-in check as the auto branch —
-    # max_attempts defaults to None (unlimited) unless an Agent explicitly sets one.
+    # Flag/cipher challenges previously had no cap at all beyond the 60s cooldown, so a team
+    # could resubmit indefinitely once the cooldown passed. Same opt-in check as the auto
+    # branch — max_attempts defaults to None (unlimited) unless an Agent explicitly sets one.
     if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
         return jsonify({"error": "No attempts remaining for this challenge."}), 403
-
-    if challenge.type == "code":
-        team_mission.submission_text = answer
-        db.session.commit()
-        logger.info("submission queued for manual review team=%r mission=%r", team.name, mission.title)
-        notify_mod("submission_queued")
-        return jsonify({"queued": True, "message": NARRATIVE["challenge_queued"]})
 
     correct = cipher_service.solve(answer, challenge.answer_key)
     logger.info("submission graded team=%r mission=%r passed=%s", team.name, mission.title, correct)
     if not correct:
+        db.session.refresh(team, with_for_update=True)
         scoring_service.apply_retry_penalty(team, team_mission)
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
         db.session.commit()
@@ -377,7 +391,7 @@ def submit_challenge():
         notify_mod("submission_failed")
         return jsonify({"correct": False, "message": NARRATIVE["challenge_fail"]})
 
-    mission_service.complete_mission(team, team_mission, mission, "passed")
+    mission_service.complete_mission(team, team_mission, mission, "passed", submitted_at=received_at)
     message = NARRATIVE["flag_final"] if challenge.type == "flag" else NARRATIVE["challenge_pass"]
     return jsonify({"correct": True, "message": message})
 
@@ -399,9 +413,40 @@ def request_hint():
     if team_mission.hint_used:
         return jsonify({"hint": _hint_text(mission.challenge)})
 
+    db.session.refresh(team, with_for_update=True)
     scoring_service.apply_hint_penalty(team, team_mission)
     db.session.commit()
     return jsonify({"hint": _hint_text(mission.challenge)})
+
+
+@missions_bp.route("/soft-lock", methods=["POST"])
+@team_required
+def soft_lock():
+    team = current_team()
+    state = event_service.get_state()
+    if state.status != "running":
+        return jsonify({"error": "Event is not currently running."}), 409
+
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    mission, _ = mission_service.current_mission_for(team, missions)
+    if mission is None:
+        return jsonify({"error": "No active mission."}), 400
+
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+    if team_mission.status in ("passed", "overridden", "soft_locked"):
+        return jsonify({"error": "This mission is already resolved."}), 409
+    if team_mission.attempts < state.soft_lock_min_attempts:
+        return jsonify(
+            {
+                "error": f"Soft Lock unlocks after {state.soft_lock_min_attempts} failed "
+                "attempt(s) at this booth."
+            }
+        ), 403
+
+    ok = mission_service.soft_lock_mission(team, team_mission, mission, state.soft_lock_min_attempts)
+    if not ok:
+        return jsonify({"error": "This mission is already resolved."}), 409
+    return jsonify({"ok": True, "message": "Booth soft-locked. Moving on to the next assignment."})
 
 
 @missions_bp.route("/challenge/run-tests", methods=["POST"])
@@ -420,13 +465,14 @@ def run_visible_tests():
     challenge = mission.challenge
     if challenge is None or challenge.grading_mode != "auto":
         return jsonify({"error": "This challenge does not support test runs."}), 400
-    if state.auto_grading_disabled:
-        return jsonify({"error": "Automated grading is temporarily disabled — a Booth Agent will review submissions manually."}), 503
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
+    if len(team_mission.knowledge_answers) < len(mission.knowledge_questions):
+        return jsonify({"error": "Complete the Knowledge Check before running tests."}), 400
     data = request.get_json(silent=True) or {}
     code = data.get("code", "")
 
+    logger.info("grading started team=%r mission=%r mode=run_visible", team.name, mission.title)
     grading_result = grading_engine.run_visible_tests(challenge, code)
     db.session.add(
         CodeSubmission(

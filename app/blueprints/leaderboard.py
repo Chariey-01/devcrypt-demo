@@ -26,8 +26,11 @@ def data():
     total_missions = len(missions)
     rows = []
     for team in teams:
-        missions_done = [tm for tm in team.team_missions if tm.status in ("passed", "overridden")]
+        missions_done = [
+            tm for tm in team.team_missions if tm.status in ("passed", "overridden", "soft_locked")
+        ]
         overridden = any(tm.status == "overridden" for tm in team.team_missions)
+        soft_locked_count = sum(1 for tm in team.team_missions if tm.status == "soft_locked")
         current, _ = mission_service.current_mission_for(team, missions)
         if total_missions and len(missions_done) >= total_missions:
             status = "finished"
@@ -49,6 +52,7 @@ def data():
                 "current_mission": current_mission,
                 "elapsed": (datetime.utcnow() - team.created_at).total_seconds(),
                 "status": status,
+                "soft_locked_count": soft_locked_count,
             }
         )
 

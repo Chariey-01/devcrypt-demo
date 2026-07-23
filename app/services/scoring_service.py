@@ -1,5 +1,4 @@
 class ScoringService:
-    MCQ_CORRECT = 10
     CHALLENGE_COMPLETE = 20
     NO_HINT_BONUS = 5
     ON_TIME_BONUS = 5
@@ -7,6 +6,14 @@ class ScoringService:
     HINT_PENALTY = 15
     OVERRIDE_PENALTY = 30
     CHECKPOINT_BONUS = 25
+    # Deliberately small and flat — participation credit for walking away from a booth, never
+    # worth more than even a weak partial-credit attempt would have earned. See
+    # score_soft_lock for why this can never be paid twice for the same booth.
+    SOFT_LOCK_PARTICIPATION = 5
+    # Trivia reward, not mission progress — deliberately smaller than any coding-challenge
+    # scoring path, so Knowledge Check can never be a meaningful substitute for solving the
+    # actual booth.
+    KNOWLEDGE_CORRECT = 3
 
     RETRY_INTEGRITY_PENALTY = 5
     HINT_INTEGRITY_PENALTY = 10
@@ -20,17 +27,17 @@ class ScoringService:
         team.integrity = max(0, team.integrity - percent)
         return team.integrity
 
-    def score_mcq_correct(self, team, team_mission):
-        self.award_points(team, self.MCQ_CORRECT, "mcq_correct")
-        team_mission.score += self.MCQ_CORRECT
+    def score_knowledge_correct(self, team, team_mission):
+        self.award_points(team, self.KNOWLEDGE_CORRECT, "knowledge_correct")
+        team_mission.score += self.KNOWLEDGE_CORRECT
 
-    def score_mission_pass(self, team, team_mission, mission, all_mcqs_correct, on_time):
+    def score_mission_pass(self, team, team_mission, mission, on_time):
         points = self.CHALLENGE_COMPLETE
         if not team_mission.hint_used:
             points += self.NO_HINT_BONUS
         if on_time:
             points += self.ON_TIME_BONUS
-        if all_mcqs_correct and not team_mission.hint_used and on_time:
+        if not team_mission.hint_used and on_time:
             points += self.PERFECT_BONUS
         self.award_points(team, points, "mission_pass")
         team_mission.score += points
@@ -38,10 +45,14 @@ class ScoringService:
 
     def score_auto_graded_pass(self, team, team_mission, challenge, grading_result, on_time):
         # Weighted-percent base, same bonus structure as score_mission_pass, plus a
-        # challenge-configured bonus on top. Kept separate from score_mission_pass so the
-        # legacy manual-review scoring path is untouched.
-        base = round(self.CHALLENGE_COMPLETE * grading_result.percent_score / 100)
-        points = base
+        # challenge-configured bonus on top. The base only ever pays the *incremental* amount
+        # beyond whatever score_auto_graded_partial already awarded on earlier below-threshold
+        # attempts (best_percent_score) — otherwise a team that failed at 60% then passed at
+        # 100% would double-collect the first 60%'s worth of base credit.
+        old_base = round(self.CHALLENGE_COMPLETE * team_mission.best_percent_score / 100)
+        new_base = round(self.CHALLENGE_COMPLETE * grading_result.percent_score / 100)
+        team_mission.best_percent_score = max(team_mission.best_percent_score, grading_result.percent_score)
+        points = max(0, new_base - old_base)
         if not team_mission.hint_used:
             points += self.NO_HINT_BONUS
         if on_time:
@@ -52,6 +63,28 @@ class ScoringService:
         self.award_points(team, points, "auto_graded_pass")
         team_mission.score += points
         return points
+
+    def score_auto_graded_partial(self, team, team_mission, grading_result):
+        # A below-threshold submission still earns points proportional to tests passed — but
+        # only the *delta* against this booth's best percent_score so far, never the full
+        # amount again, so grinding the same (or a worse) solution through the retry cooldown
+        # can't double-count score. No Fragment, no hint/on-time/perfect bonuses, no status
+        # change — those are exclusively score_auto_graded_pass's job once the team actually
+        # clears pass_threshold.
+        if grading_result.percent_score <= team_mission.best_percent_score:
+            return 0
+        old_points = round(self.CHALLENGE_COMPLETE * team_mission.best_percent_score / 100)
+        new_points = round(self.CHALLENGE_COMPLETE * grading_result.percent_score / 100)
+        delta = new_points - old_points
+        team_mission.best_percent_score = grading_result.percent_score
+        if delta:
+            self.award_points(team, delta, "auto_graded_partial")
+            team_mission.score += delta
+        return delta
+
+    def score_soft_lock(self, team, team_mission):
+        self.award_points(team, self.SOFT_LOCK_PARTICIPATION, "soft_lock")
+        team_mission.score += self.SOFT_LOCK_PARTICIPATION
 
     def apply_retry_penalty(self, team, team_mission):
         team_mission.attempts += 1

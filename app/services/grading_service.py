@@ -2,6 +2,7 @@ import resource
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +30,18 @@ MAX_SUITE_SECONDS = 30
 CPU_SECONDS_LIMIT = 5
 ADDRESS_SPACE_BYTES_LIMIT = 256 * 1024 * 1024  # 256 MB
 MAX_PROCESSES_LIMIT = 16
+
+# Bounds how many grading subprocesses may be running at once across ALL concurrent requests,
+# so a burst of simultaneous submissions (e.g. 20 teams at once) can't spawn 20 concurrent
+# 256MB child processes and exhaust the host. This gates subprocess *creation* only — the
+# acquire/release still happens on the gevent hub greenlet like everything else here, it does
+# NOT move subprocess.run() onto a worker thread (see the NOTE above: that's what broke grading
+# under gunicorn -k gevent before). threading.Semaphore is used rather than gevent.lock.Semaphore
+# so this module still works unpatched (e.g. under plain pytest) — gevent.monkey.patch_all()
+# (app/__init__.py, run.py) makes it cooperative for free when it matters, same as every other
+# stdlib lock in this codebase under the real server.
+MAX_CONCURRENT_GRADING_PROCESSES = 8
+_grading_slots = threading.Semaphore(MAX_CONCURRENT_GRADING_PROCESSES)
 
 
 @dataclass
@@ -76,19 +89,20 @@ class GradingEngine:
         with tempfile.TemporaryDirectory() as tmp_dir:
             script_path = Path(tmp_dir) / "submission.py"
             script_path.write_text(code)
-            try:
-                proc = subprocess.run(
-                    [sys.executable, str(script_path)],
-                    input=input_data or "",
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds,
-                    cwd=tmp_dir,
-                    env={"PATH": "/usr/bin:/bin"},
-                    preexec_fn=_set_limits,
-                )
-            except subprocess.TimeoutExpired:
-                return None, "Timed out."
+            with _grading_slots:
+                try:
+                    proc = subprocess.run(
+                        [sys.executable, str(script_path)],
+                        input=input_data or "",
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_seconds,
+                        cwd=tmp_dir,
+                        env={"PATH": "/usr/bin:/bin"},
+                        preexec_fn=_set_limits,
+                    )
+                except subprocess.TimeoutExpired:
+                    return None, "Timed out."
             if proc.returncode != 0:
                 return None, (proc.stderr or "Runtime error.").strip()[-500:]
             return proc.stdout.strip(), None
@@ -141,7 +155,7 @@ class GradingEngine:
             weighted_score=weighted_score,
             total_weight=total_weight,
             percent_score=percent,
-            passed_threshold=percent >= (challenge.pass_threshold or 100),
+            passed_threshold=percent >= (challenge.pass_threshold or 80),
         )
 
     def run_visible_tests(self, challenge, code):

@@ -9,6 +9,7 @@
   let selected = null; // full mission detail, once chosen
   let activeTab = "challenge";
   let flashText = null;
+  let submissions = [];
 
   async function api(method, url, body) {
     const res = await fetch(url, {
@@ -64,6 +65,67 @@
   function renderAll() {
     renderMissionList();
     renderEditor();
+  }
+
+  async function loadSubmissions() {
+    const data = await api("GET", "/agent/submissions");
+    submissions = data.submissions;
+    renderSubmissions();
+  }
+
+  function fmtElapsed(seconds) {
+    if (seconds == null) return "—";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function renderSubmissions() {
+    const el = document.getElementById("agent-submissions");
+    if (!el) return;
+    const rows = submissions
+      .map((s) => {
+        return `
+      <tr>
+        <td>${escapeHtml(s.team)}</td>
+        <td>${escapeHtml(s.mission)}</td>
+        <td>${new Date(s.created_at + "Z").toLocaleTimeString()}</td>
+        <td>${fmtElapsed(s.elapsed_seconds)}${s.submission_status === "overtime" ? ` <span class="badge badge-overridden">overtime</span>` : ""}</td>
+        <td>${s.visible_passed}/${s.visible_total} visible</td>
+        <td>${s.hidden_passed}/${s.hidden_total} hidden</td>
+        <td>${s.percent_score}%</td>
+        <td><span class="badge ${s.passed ? "badge-passed" : "badge-overridden"}">${s.passed ? "Pass" : "Fail"}</span></td>
+        <td><span class="badge ${s.team_mission_status === "passed" ? "badge-passed" : s.team_mission_status === "overridden" ? "badge-overridden" : "badge-not_started"}">${escapeHtml(s.team_mission_status)}</span></td>
+        <td>
+          <button type="button" class="ghost" data-view-code="${s.id}">${icon("eye", 12)} Code</button>
+        </td>
+      </tr>`;
+      })
+      .join("");
+
+    el.innerHTML = `
+      <div class="data-grid-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Team</th><th>Mission</th><th>Submitted</th><th>Time taken</th>
+              <th>Visible</th><th>Hidden</th><th>Score</th><th>Grade</th><th>Mission status</th><th></th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="10" class="hint-text">No graded submissions yet.</td></tr>`}</tbody>
+        </table>
+      </div>
+      <div id="agent-submission-code" class="hint-text mono"></div>
+    `;
+
+    el.querySelectorAll("[data-view-code]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const submission = submissions.find((s) => s.id === Number(btn.dataset.viewCode));
+        const codeEl = document.getElementById("agent-submission-code");
+        codeEl.style.whiteSpace = "pre-wrap";
+        codeEl.textContent = submission ? submission.code : "";
+      });
+    });
   }
 
   const STATUS_BADGE = {
@@ -160,6 +222,7 @@
     const tabs = [
       ["challenge", "Challenge"],
       ["tests", "Test Suite"],
+      ["knowledge", "Knowledge Check"],
       ["hints", "Hints"],
       ["assets", "Files"],
       ["preview", "Preview"],
@@ -230,6 +293,7 @@
     const content = document.getElementById("agent-tab-content");
     if (activeTab === "challenge") renderChallengeTab(content);
     else if (activeTab === "tests") renderTestsTab(content);
+    else if (activeTab === "knowledge") renderKnowledgeTab(content);
     else if (activeTab === "hints") renderHintsTab(content);
     else if (activeTab === "assets") renderAssetsTab(content);
     else if (activeTab === "preview") renderPreviewTab(content);
@@ -444,6 +508,68 @@
     });
   }
 
+  function renderKnowledgeTab(el) {
+    const rows = (selected.knowledge_questions || [])
+      .map(
+        (q) => `
+      <div class="card" style="margin-bottom:0.5rem;">
+        <p>${escapeHtml(q.question_text)}</p>
+        <ul>
+          ${q.options
+            .map(
+              (o) =>
+                `<li>${escapeHtml(o.option_text)}${o.is_correct ? ` <span class="badge badge-passed">correct</span>` : ""}</li>`
+            )
+            .join("")}
+        </ul>
+        <button type="button" class="danger" data-remove-question="${q.id}">${icon("x", 12)} Remove</button>
+      </div>`
+      )
+      .join("");
+    const optionRows = [0, 1, 2, 3]
+      .map(
+        (i) => `
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <input type="radio" name="correct" value="${i}" ${i === 0 ? "checked" : ""} style="width:auto;">
+        <input type="text" name="option_${i}" placeholder="Option ${i + 1}${i < 2 ? " (required)" : " (optional)"}" ${i < 2 ? "required" : ""}>
+      </div>`
+      )
+      .join("");
+    el.innerHTML = `
+      <p class="hint-text">${icon("radar", 13)} General knowledge trivia for this booth's discipline —
+        unrelated to the coding problem. Correct answers reveal a cipher clue, not the mission fragment.</p>
+      ${rows || `<p class="hint-text">No Knowledge Check questions configured yet.</p>`}
+      <form id="knowledge-form" class="auth-form">
+        <textarea name="question_text" rows="2" placeholder="Question text" required></textarea>
+        ${optionRows}
+        <button type="submit">${icon("zap", 13)} Add Question</button>
+      </form>
+    `;
+    el.querySelectorAll("[data-remove-question]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        await api("DELETE", `/agent/knowledge-questions/${btn.dataset.removeQuestion}`);
+        await refreshSelected();
+      })
+    );
+    document.getElementById("knowledge-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const correctIndex = Number(fd.get("correct"));
+      const options = [0, 1, 2, 3]
+        .map((i) => ({ option_text: (fd.get(`option_${i}`) || "").trim(), is_correct: i === correctIndex }))
+        .filter((o) => o.option_text);
+      try {
+        await api("POST", `/agent/missions/${selected.id}/knowledge-questions`, {
+          question_text: fd.get("question_text"),
+          options,
+        });
+        await refreshSelected();
+      } catch (err) {
+        flash(err.message);
+      }
+    });
+  }
+
   function renderHintsTab(el) {
     if (!selected.challenge) {
       el.innerHTML = `<p class="hint-text">${icon("alert-triangle", 13)} Save the challenge before adding hints.</p>`;
@@ -562,4 +688,6 @@
   }
 
   loadMissions().catch((err) => flash(err.message));
+  loadSubmissions().catch(() => {});
+  setInterval(() => loadSubmissions().catch(() => {}), 3000);
 })();

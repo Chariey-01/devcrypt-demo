@@ -33,3 +33,6 @@
   <div id="finished-panel" class="hidden"></div>
 </main>
 {% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='vendor/monaco/vs/loader.js') }}"></script>
+{% endblock %}

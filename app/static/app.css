@@ -539,6 +539,21 @@ textarea.mono {
   white-space: pre;
 }
 
+.monaco-mount {
+  height: 340px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+
+@media (max-width: 640px) {
+  .monaco-mount {
+    height: 260px;
+  }
+}
+
 .fragment-invalid {
   border-color: var(--red) !important;
 }
@@ -965,7 +980,8 @@ button:disabled {
 
 .mission-timeline-node.current,
 .mission-timeline-node.passed,
-.mission-timeline-node.overridden {
+.mission-timeline-node.overridden,
+.mission-timeline-node.soft_locked {
   opacity: 1;
 }
 
@@ -1147,7 +1163,7 @@ button:disabled {
   position: relative;
 }
 
-.mcq-option, .challenge-option {
+.challenge-option {
   display: block;
   width: 100%;
   text-align: left;
@@ -1162,23 +1178,23 @@ button:disabled {
   padding: 0.65rem 0.9rem;
 }
 
-.mcq-option:hover:not(:disabled), .challenge-option:hover:not(:disabled) {
+.challenge-option:hover:not(:disabled) {
   border-color: var(--accent);
   box-shadow: none;
   filter: none;
 }
 
-.mcq-option.correct, .challenge-option.correct {
+.challenge-option.correct {
   border-color: var(--green);
   color: var(--green);
 }
 
-.mcq-option.incorrect, .challenge-option.incorrect {
+.challenge-option.incorrect {
   border-color: var(--red);
   color: var(--red);
 }
 
-.mcq-option:disabled, .challenge-option:disabled {
+.challenge-option:disabled {
   cursor: default;
   opacity: 0.85;
 }
@@ -1209,6 +1225,19 @@ button:disabled {
   color: var(--amber);
   padding: 0.65rem 1rem;
   border-radius: var(--radius-md);
+  font-weight: 600;
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
+}
+
+.connection-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(251, 191, 36, 0.95);
+  color: #1a1400;
+  padding: 0.5rem 1rem;
+  text-align: center;
   font-weight: 600;
   font-family: var(--font-sans);
   font-size: var(--text-small);
@@ -1306,6 +1335,7 @@ button:disabled {
 .badge-finished, .badge-passed { background: var(--accent-2-soft); color: var(--accent-2); border-color: rgba(45, 212, 200, 0.35); }
 .badge-overridden { background: rgba(251, 191, 36, 0.1); color: var(--amber); border-color: rgba(251, 191, 36, 0.35); }
 .badge-not_started { background: rgba(127, 151, 163, 0.1); color: var(--text-dim); border-color: var(--border); }
+.badge-soft_locked { background: rgba(148, 130, 255, 0.1); color: #9482ff; border-color: rgba(148, 130, 255, 0.35); }
 
 .rank-trophy { color: var(--amber); margin-right: 0.15rem; }
 

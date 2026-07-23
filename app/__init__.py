@@ -21,6 +21,7 @@ import os
 from flask import Flask, render_template
 
 from .config import Config
+from .errors import register_error_handlers
 from .extensions import bcrypt, db, login_manager, migrate, socketio
 from .blueprints.auth import auth_bp
 from .blueprints.missions import missions_bp
@@ -28,7 +29,6 @@ from .blueprints.scoring import scoring_bp
 from .blueprints.cipher import cipher_bp
 from .blueprints.leaderboard import leaderboard_bp
 from .blueprints.mod import mod_bp
-from .blueprints.booth import booth_bp
 from .blueprints.security import security_bp
 from .blueprints.portals import portals_bp
 from .blueprints.agent import agent_bp
@@ -84,7 +84,6 @@ def create_app(config_class=Config):
     app.register_blueprint(cipher_bp)
     app.register_blueprint(leaderboard_bp)
     app.register_blueprint(mod_bp)
-    app.register_blueprint(booth_bp)
     app.register_blueprint(security_bp)
     app.register_blueprint(portals_bp)
     app.register_blueprint(agent_bp)
@@ -94,6 +93,8 @@ def create_app(config_class=Config):
         from .models import User
 
         return User.query.get(int(user_id))
+
+    register_error_handlers(app)
 
     @app.route("/")
     def home():

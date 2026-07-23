@@ -18,7 +18,14 @@ def roles_required(*roles):
     def decorator(view):
         @wraps(view)
         def wrapped(*args, **kwargs):
-            if not current_user.is_authenticated or current_user.role not in roles:
+            # is_active is checked here too, not just at login — a Game Master deactivating an
+            # agent mid-event must take effect immediately for that agent's already-open
+            # session, not just block their next fresh login.
+            if (
+                not current_user.is_authenticated
+                or current_user.role not in roles
+                or not current_user.is_active
+            ):
                 abort(403)
             return view(*args, **kwargs)
 

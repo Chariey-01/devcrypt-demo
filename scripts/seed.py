@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 from app.extensions import db
-from app.models import Challenge, EvidenceFile, MCQ, MCQOption, Mission, Team, TestCase, User
+from app.models import Challenge, EvidenceFile, Mission, Team, TestCase, User
 
 MISSIONS = [
     {
@@ -28,35 +28,6 @@ MISSIONS = [
             "10:02:14 WARN  skipping auth_middleware.py (feature flag disabled)\n"
             "10:02:15 INFO  deploy complete\n",
         ),
-        "mcqs": [
-            (
-                "What caused the authentication bypass?",
-                [
-                    ("A feature flag disabled the auth middleware during deploy", True),
-                    ("The database password expired", False),
-                    ("The load balancer misrouted traffic", False),
-                    ("A developer force-pushed to main", False),
-                ],
-            ),
-            (
-                "Which log line is the root cause?",
-                [
-                    ("deploy started rev=8f3a1c", False),
-                    ("skipping auth_middleware.py (feature flag disabled)", True),
-                    ("deploy complete", False),
-                    ("None of the above", False),
-                ],
-            ),
-            (
-                "What is the correct immediate mitigation?",
-                [
-                    ("Roll back the deploy and re-enable the flag", True),
-                    ("Restart the database", False),
-                    ("Ignore it — deploy succeeded", False),
-                    ("Rotate all team keys", False),
-                ],
-            ),
-        ],
         "challenge": {
             "type": "code",
             "prompt": "Write the config change that re-enables auth_middleware.py.",
@@ -83,35 +54,6 @@ MISSIONS = [
             "09:14:05 WARN  token used from unrecognized IP 203.0.113.44\n"
             "09:14:07 INFO  token used to call /admin/users/delete\n",
         ),
-        "mcqs": [
-            (
-                "Why is this token dangerous?",
-                [
-                    ("It has unlimited scope and never expires", True),
-                    ("It's too short", False),
-                    ("It was issued twice", False),
-                    ("It uses the wrong protocol", False),
-                ],
-            ),
-            (
-                "Which log line shows the compromise being actively used?",
-                [
-                    ("token issued sub=svc-admin scope=* exp=none", False),
-                    ("token used from unrecognized IP 203.0.113.44", False),
-                    ("token used to call /admin/users/delete", True),
-                    ("None of the above", False),
-                ],
-            ),
-            (
-                "What's the correct remediation?",
-                [
-                    ("Revoke the token and reissue scoped, short-lived tokens", True),
-                    ("Restart the server", False),
-                    ("Ignore it, nothing was deleted yet", False),
-                    ("Rotate the database password", False),
-                ],
-            ),
-        ],
         "challenge": {
             "type": "code",
             "prompt": "Describe the token policy fix: scope and expiry that should have been enforced.",
@@ -123,7 +65,7 @@ MISSIONS = [
     {
         "title": "Network Node — PACKET",
         "cipher_word": "PACKET",
-        "type": "mcq",
+        "type": "flag",
         "booth_id": 3,
         "order_index": 3,
         "time_limit": 600,
@@ -138,44 +80,10 @@ MISSIONS = [
             "14:02:01 UDP 198.51.100.7:53 -> 10.0.0.5:53 len=4096\n"
             "14:02:02 UDP 198.51.100.7:53 -> 10.0.0.5:53 len=4096\n",
         ),
-        "mcqs": [
-            (
-                "What type of attack does this traffic represent?",
-                [
-                    ("DNS amplification / reflection", True),
-                    ("SQL injection", False),
-                    ("Phishing", False),
-                    ("Directory traversal", False),
-                ],
-            ),
-            (
-                "What is suspicious about the packet length?",
-                [
-                    ("4096 bytes is abnormally large for a DNS response", True),
-                    ("It's too small to be real traffic", False),
-                    ("The length field is missing", False),
-                    ("Nothing — this is normal", False),
-                ],
-            ),
-            (
-                "What's the correct first response?",
-                [
-                    ("Rate-limit and filter traffic from the source at the firewall", True),
-                    ("Disable the firewall entirely", False),
-                    ("Restart the DNS server with no filtering", False),
-                    ("Do nothing — it will pass", False),
-                ],
-            ),
-        ],
         "challenge": {
-            "type": "mcq",
-            "prompt": "Select the correct mitigation for this DNS amplification pattern.",
-            "steps": (
-                "Rate-limit and filter UDP/53 traffic from the offending source\n"
-                "Disable the firewall to let traffic pass through\n"
-                "Restart the DNS server without any filtering\n"
-                "Ignore it — the node will recover on its own"
-            ),
+            "type": "flag",
+            "prompt": "Describe the correct mitigation for this DNS amplification pattern.",
+            "steps": None,
             "answer_key": "Rate-limit and filter UDP/53 traffic from the offending source",
             "hint_text": "Look at where the packets are coming from, not just how many there are.",
         },
@@ -198,35 +106,6 @@ MISSIONS = [
             "-- migration_004 applied without a unique constraint restored\n"
             "SELECT COUNT(*) FROM users; -- returns duplicate id values\n",
         ),
-        "mcqs": [
-            (
-                "What did the migration remove?",
-                [
-                    ("The primary key constraint on users.id", True),
-                    ("The users table entirely", False),
-                    ("A foreign key on orders", False),
-                    ("Nothing — this is a normal migration", False),
-                ],
-            ),
-            (
-                "What symptom does this cause?",
-                [
-                    ("Duplicate id values corrupting lookups", True),
-                    ("Slower query performance only", False),
-                    ("The table becomes read-only", False),
-                    ("No visible symptom", False),
-                ],
-            ),
-            (
-                "What's the correct fix?",
-                [
-                    ("Restore the primary key constraint after de-duplicating rows", True),
-                    ("Drop the users table and start over", False),
-                    ("Add an index without removing duplicates", False),
-                    ("Ignore it — duplicates are harmless", False),
-                ],
-            ),
-        ],
         "challenge": {
             "type": "code",
             "prompt": "Write the fix that restores integrity to the users table.",
@@ -238,7 +117,7 @@ MISSIONS = [
     {
         "title": "Application Node — INJECT",
         "cipher_word": "INJECT",
-        "type": "mcq",
+        "type": "flag",
         "booth_id": 5,
         "order_index": 5,
         "time_limit": 600,
@@ -251,44 +130,10 @@ MISSIONS = [
             "log",
             "SELECT * FROM users WHERE username = '' OR '1'='1' -- ' AND password = '';\n",
         ),
-        "mcqs": [
-            (
-                "What vulnerability is this?",
-                [
-                    ("SQL injection", True),
-                    ("Cross-site scripting", False),
-                    ("Buffer overflow", False),
-                    ("Cross-site request forgery", False),
-                ],
-            ),
-            (
-                "What does '1'='1' accomplish here?",
-                [
-                    ("Makes the WHERE clause always true, bypassing authentication", True),
-                    ("Encrypts the password field", False),
-                    ("Deletes the users table", False),
-                    ("Nothing — it's a typo", False),
-                ],
-            ),
-            (
-                "What's the correct fix?",
-                [
-                    ("Use parameterized queries / prepared statements", True),
-                    ("Concatenate strings more carefully", False),
-                    ("Hide the login form", False),
-                    ("Block the user's IP address permanently", False),
-                ],
-            ),
-        ],
         "challenge": {
-            "type": "mcq",
-            "prompt": "Select the correct remediation for this SQL injection.",
-            "steps": (
-                "Use parameterized queries / prepared statements\n"
-                "Concatenate strings more carefully\n"
-                "Hide the login form\n"
-                "Block the user's IP address permanently"
-            ),
+            "type": "flag",
+            "prompt": "Describe the correct remediation for this SQL injection.",
+            "steps": None,
             "answer_key": "Use parameterized queries / prepared statements",
             "hint_text": "The fix is about how the query is built, not about blocking the attacker afterward.",
         },
@@ -309,35 +154,6 @@ MISSIONS = [
             "log",
             "CORE STATUS: LOCKED\nFRAGMENTS RECEIVED: 5/5\nAWAITING: SECURITY CLEARANCE x2\nAWAITING: MASTER FLAG\n",
         ),
-        "mcqs": [
-            (
-                "How many clearance stamps are required to attempt restoration?",
-                [
-                    ("Two", True),
-                    ("None", False),
-                    ("One", False),
-                    ("Four", False),
-                ],
-            ),
-            (
-                "How many fragments have been recovered at this point?",
-                [
-                    ("Five", True),
-                    ("Zero", False),
-                    ("Three", False),
-                    ("Six", False),
-                ],
-            ),
-            (
-                "What is required alongside clearance to restore the core?",
-                [
-                    ("The master flag", True),
-                    ("A new deploy", False),
-                    ("A password reset", False),
-                    ("Nothing else", False),
-                ],
-            ),
-        ],
         "challenge": {
             "type": "code",
             "prompt": (
@@ -405,20 +221,6 @@ def seed_demo():
             db.session.add(
                 EvidenceFile(mission_id=mission.id, label=label, file_type=file_type, content=content)
             )
-
-            for order_index, (question_text, options) in enumerate(spec["mcqs"]):
-                mcq = MCQ(mission_id=mission.id, question_text=question_text, order_index=order_index)
-                db.session.add(mcq)
-                db.session.flush()
-                for option_text, is_correct in options:
-                    db.session.add(
-                        MCQOption(
-                            mcq_id=mcq.id,
-                            option_text=option_text,
-                            is_correct=is_correct,
-                            cipher_letter_index=order_index if is_correct else None,
-                        )
-                    )
 
             challenge = spec["challenge"]
             challenge_row = Challenge(

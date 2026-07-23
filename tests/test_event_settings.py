@@ -14,7 +14,7 @@ def _login_team(client, name="Alpha", key="ALPHA01"):
     return res
 
 
-def _setup_auto_graded_mission(app, hint_limit=3, leaderboard_public=True, auto_grading_disabled=False):
+def _setup_auto_graded_mission(app, hint_limit=3, leaderboard_public=True):
     with app.app_context():
         gm = User(email="gm@test.local", role="game_master")
         gm.set_password("pw")
@@ -26,7 +26,6 @@ def _setup_auto_graded_mission(app, hint_limit=3, leaderboard_public=True, auto_
                 status="running",
                 hint_limit=hint_limit,
                 leaderboard_public=leaderboard_public,
-                auto_grading_disabled=auto_grading_disabled,
             )
         )
         db.session.commit()
@@ -80,25 +79,6 @@ def test_leaderboard_public_false_does_not_affect_gm_dashboard(client, app):
     assert body["teams"][0]["name"] == "Alpha"
 
 
-def test_auto_grading_disabled_routes_submission_to_manual_review(client, app):
-    _setup_auto_graded_mission(app, auto_grading_disabled=True)
-    _login_team(client)
-    res = client.post("/missions/challenge/submit", json={"code": "print(int(input()) * 2)"})
-    assert res.status_code == 200
-    body = res.get_json()
-    assert body.get("queued") is True
-
-    status = client.get("/missions/status").get_json()
-    assert status["mission"]["pending_review"] is True
-
-
-def test_auto_grading_disabled_blocks_run_visible_tests(client, app):
-    _setup_auto_graded_mission(app, auto_grading_disabled=True)
-    _login_team(client)
-    res = client.post("/missions/challenge/run-tests", json={"code": "print(int(input()) * 2)"})
-    assert res.status_code == 503
-
-
 def test_finished_threshold_tracks_actual_published_mission_count(client, app):
     # Only one published mission exists — passing it alone should be enough to finish.
     mission_id, team_id = _setup_auto_graded_mission(app)
@@ -129,5 +109,3 @@ def test_event_settings_get_and_post(client, app):
         assert state.name == "Career Fair 2026"
         assert state.hint_limit == 5
         assert state.leaderboard_public is True
-        # auto_grading_disabled checkbox omitted from the POST body -> unchecked -> False.
-        assert state.auto_grading_disabled is False

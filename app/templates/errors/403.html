@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Access Denied — DevCrypt{% endblock %}
+{% block content %}
+<main class="shell auth-shell">
+  <h1 class="brand-mini">{{ icon('network', 16) }} DevCrypt</h1>
+  <h2>{{ icon('octagon-alert', 18) }} Access Denied</h2>
+  <p>{{ message }}</p>
+  <p class="footnote"><a href="{{ url_for('home') }}">&larr; Back</a></p>
+</main>
+{% endblock %}

@@ -35,11 +35,17 @@ class CipherService:
         revealed = set()
         if not team_mission:
             return revealed
-        for answer in team_mission.mcq_answers:
-            if answer.is_correct:
-                revealed.add(answer.mcq.order_index)
+        word_len = len(mission.cipher_word)
+        if word_len:
+            for answer in team_mission.knowledge_answers:
+                if answer.is_correct:
+                    # Modulo, not a direct index — a booth's Knowledge Check question count
+                    # and its cipher word length are independently configured (unlike the old
+                    # removed MCQ system, which assumed they matched 1:1), so this never
+                    # throws even if an Agent adds more questions than letters.
+                    revealed.add(answer.question.order_index % word_len)
         if team_mission.status in ("passed", "overridden"):
-            revealed.update(range(len(mission.cipher_word)))
+            revealed.update(range(word_len))
         return revealed
 
     def board_state(self, team, missions):

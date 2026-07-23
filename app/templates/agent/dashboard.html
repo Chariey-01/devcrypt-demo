@@ -6,7 +6,6 @@
   <header class="topbar">
     <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
     <span class="pill">{{ icon('flame-kindling', 13) }} Agent Dashboard</span>
-    <a class="ghost-link" href="{{ url_for('booth.select_booth') }}">{{ icon('server', 13) }} Review Queue</a>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
@@ -19,6 +18,12 @@
   <section id="agent-mission-list" class="card"></section>
 
   <section id="agent-editor"></section>
+
+  <p class="section-heading">{{ icon('scan-line', 14) }} Graded Submissions</p>
+  <p class="hint-text">{{ icon('eye', 14) }} Auto-grading already decided these — review the report, inspect the
+    code if something looks off, and override only for exceptional circumstances (e.g. a broken test case).
+    A passing grade is never re-run or second-guessed here.</p>
+  <section id="agent-submissions" class="card"></section>
 </main>
 {% endblock %}
 {% block extra_scripts %}

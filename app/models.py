@@ -20,6 +20,13 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(20), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Display-only, distinct from the email used to actually log in — surfaced in the Game
+    # Master's Booth Agent Management panel so "who is this" doesn't require memorizing emails.
+    full_name = db.Column(db.String(120), nullable=True)
+    # Deactivated staff accounts can't log in (see auth.login) but are never deleted implicitly
+    # — a Game Master can always reactivate one, and any missions they own stay theirs.
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    last_login_at = db.Column(db.DateTime, nullable=True)
 
     teams = db.relationship("Team", secondary=team_players, back_populates="players")
 
@@ -81,7 +88,7 @@ class Mission(db.Model):
     cipher_word = db.Column(db.String(20), nullable=False)
     order_index = db.Column(db.Integer, default=0)
     time_limit = db.Column(db.Integer, nullable=True)
-    # NULL = unowned, staffed the legacy way via /booth/select. Set = this mission is a
+    # NULL = unowned (legacy rows predating Agent ownership). Set = this mission is a
     # stakeholder booth managed exclusively by that Agent (see app/blueprints/agent.py).
     owner_agent_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     # "draft" (agent-authoring, invisible to players) | "published" (default — every mission
@@ -89,8 +96,11 @@ class Mission(db.Model):
     status = db.Column(db.String(20), default="published", nullable=False)
 
     evidence_files = db.relationship("EvidenceFile", backref="mission", cascade="all, delete-orphan")
-    mcqs = db.relationship("MCQ", backref="mission", cascade="all, delete-orphan", order_by="MCQ.order_index")
     challenges = db.relationship("Challenge", backref="mission", cascade="all, delete-orphan")
+    knowledge_questions = db.relationship(
+        "KnowledgeQuestion", backref="mission", cascade="all, delete-orphan",
+        order_by="KnowledgeQuestion.order_index",
+    )
     team_missions = db.relationship("TeamMission", backref="mission", cascade="all, delete-orphan")
     fragments = db.relationship("Fragment", backref="mission", cascade="all, delete-orphan")
     owner_agent = db.relationship("User", foreign_keys=[owner_agent_id])
@@ -110,29 +120,29 @@ class EvidenceFile(db.Model):
     content = db.Column(db.Text, nullable=False)
 
 
-class MCQ(db.Model):
-    __tablename__ = "mcqs"
+class KnowledgeQuestion(db.Model):
+    """A booth's pre-challenge "Knowledge Check" — general discipline trivia, unrelated to the
+    coding problem itself (see the removed MCQ system, which WAS tied 1:1 to the challenge; this
+    is deliberately a separate, earlier stage — see cipher_service.revealed_indices for the
+    cipher-reveal tie-in, and TeamKnowledgeAnswer for the per-team answer record)."""
+
+    __tablename__ = "knowledge_questions"
 
     id = db.Column(db.Integer, primary_key=True)
     mission_id = db.Column(db.Integer, db.ForeignKey("missions.id"), nullable=False)
     question_text = db.Column(db.Text, nullable=False)
     order_index = db.Column(db.Integer, default=0)
-    # Provenance only — lets a future AI-assisted generator tag what it created and from
-    # which uploaded file, without a schema change when that feature is built.
-    source = db.Column(db.String(20), default="manual")
-    source_asset_id = db.Column(db.Integer, db.ForeignKey("evidence_files.id"), nullable=True)
 
-    options = db.relationship("MCQOption", backref="mcq", cascade="all, delete-orphan")
+    options = db.relationship("KnowledgeOption", backref="question", cascade="all, delete-orphan")
 
 
-class MCQOption(db.Model):
-    __tablename__ = "mcq_options"
+class KnowledgeOption(db.Model):
+    __tablename__ = "knowledge_options"
 
     id = db.Column(db.Integer, primary_key=True)
-    mcq_id = db.Column(db.Integer, db.ForeignKey("mcqs.id"), nullable=False)
+    question_id = db.Column(db.Integer, db.ForeignKey("knowledge_questions.id"), nullable=False)
     option_text = db.Column(db.String(255), nullable=False)
     is_correct = db.Column(db.Boolean, default=False)
-    cipher_letter_index = db.Column(db.Integer, nullable=True)
 
 
 class Challenge(db.Model):
@@ -156,7 +166,7 @@ class Challenge(db.Model):
     solution_code = db.Column(db.Text, nullable=True)
     # "manual_review" (default, legacy booth-agent queue) or "auto" (sandboxed TestCase grading).
     grading_mode = db.Column(db.String(20), default="manual_review")
-    pass_threshold = db.Column(db.Integer, default=100)
+    pass_threshold = db.Column(db.Integer, default=80)
     max_attempts = db.Column(db.Integer, nullable=True)
     bonus_points = db.Column(db.Integer, default=0)
     time_limit_seconds = db.Column(db.Integer, default=5)
@@ -225,28 +235,44 @@ class TeamMission(db.Model):
     completed_at = db.Column(db.DateTime, nullable=True)
     attempts = db.Column(db.Integer, default=0)
     score = db.Column(db.Integer, default=0)
+    # Highest percent_score seen across every auto-graded submission for this booth, whether or
+    # not it cleared pass_threshold — lets a below-threshold resubmission be scored as the
+    # *delta* against the previous best instead of stacking full credit on every attempt.
+    best_percent_score = db.Column(db.Integer, default=0)
     integrity_delta = db.Column(db.Integer, default=0)
     submission_text = db.Column(db.Text, nullable=True)
     penalty_until = db.Column(db.DateTime, nullable=True)
     hint_used = db.Column(db.Boolean, default=False)
 
-    mcq_answers = db.relationship("TeamMCQAnswer", backref="team_mission", cascade="all, delete-orphan")
+    # --- Frozen at the moment a deciding submission is received (before grading/review runs),
+    # never touched by how long grading or Booth Agent review subsequently takes. Reset back to
+    # NULL whenever a team is sent back for another attempt (booth retry, game-master reset) so
+    # the live countdown resumes. See MissionService.freeze_submission. ---
+    submitted_at = db.Column(db.DateTime, nullable=True)
+    elapsed_seconds = db.Column(db.Integer, nullable=True)
+    time_remaining = db.Column(db.Integer, nullable=True)  # negative == submitted overtime
+    submission_status = db.Column(db.String(20), nullable=True)  # "on_time" | "overtime"
+    grading_status = db.Column(db.String(20), nullable=True)  # "pending_review" | "graded"
+
+    knowledge_answers = db.relationship(
+        "TeamKnowledgeAnswer", backref="team_mission", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (db.UniqueConstraint("team_id", "mission_id"),)
 
 
-class TeamMCQAnswer(db.Model):
-    __tablename__ = "team_mcq_answers"
+class TeamKnowledgeAnswer(db.Model):
+    __tablename__ = "team_knowledge_answers"
 
     id = db.Column(db.Integer, primary_key=True)
     team_mission_id = db.Column(db.Integer, db.ForeignKey("team_missions.id"), nullable=False)
-    mcq_id = db.Column(db.Integer, db.ForeignKey("mcqs.id"), nullable=False)
-    selected_option_id = db.Column(db.Integer, db.ForeignKey("mcq_options.id"), nullable=False)
+    question_id = db.Column(db.Integer, db.ForeignKey("knowledge_questions.id"), nullable=False)
+    selected_option_id = db.Column(db.Integer, db.ForeignKey("knowledge_options.id"), nullable=False)
     is_correct = db.Column(db.Boolean, default=False)
     answered_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    mcq = db.relationship("MCQ")
-    selected_option = db.relationship("MCQOption")
+    question = db.relationship("KnowledgeQuestion")
+    selected_option = db.relationship("KnowledgeOption")
 
 
 class Fragment(db.Model):
@@ -316,6 +342,9 @@ class EventState(db.Model):
     description = db.Column(db.Text, nullable=True)
     hint_limit = db.Column(db.Integer, default=3, nullable=False)
     leaderboard_public = db.Column(db.Boolean, default=True, nullable=False)
-    # Emergency kill-switch: when set, auto-graded submissions route to the manual-review queue
-    # instead of executing code — a safety valve if the grading sandbox misbehaves mid-event.
+    # Inert legacy column — manual review no longer exists (agents are grading-free monitors),
+    # so this no longer has any effect anywhere. Left in place rather than migrated away.
     auto_grading_disabled = db.Column(db.Boolean, default=False, nullable=False)
+    # A team can't Soft Lock a booth until they've failed it at least this many times — keeps
+    # it a genuine "we're stuck" escape hatch rather than a free first-attempt point farm.
+    soft_lock_min_attempts = db.Column(db.Integer, default=1, nullable=False)

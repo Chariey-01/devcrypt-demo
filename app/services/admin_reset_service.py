@@ -6,29 +6,29 @@ from ..models import (
     Fragment,
     LeaderboardSnapshot,
     Team,
-    TeamMCQAnswer,
+    TeamKnowledgeAnswer,
     TeamMission,
 )
 
 
 class AdminResetService:
     def _clear_team_progress(self, team):
-        # Both CodeSubmission and TeamMCQAnswer have cascade="all, delete-orphan" declared on
-        # the ORM *relationship* (TeamMission.mcq_answers / the CodeSubmission backref) — but
-        # that only fires on an ORM-level session.delete(), never on Query.delete(), which
-        # issues a raw bulk DELETE that bypasses the ORM (and therefore cascades) entirely.
-        # Confirmed live: this exact gap passed every local test (SQLite doesn't enforce FKs
-        # by default) and then threw a real ForeignKeyViolation the first time it ran against
-        # production Postgres, which does. Both children must be deleted explicitly, in FK
-        # order, before their parent TeamMission row.
+        # CodeSubmission and TeamKnowledgeAnswer both have cascade="all, delete-orphan"
+        # declared on the ORM *relationship* (the TeamMission backref) — but that only fires
+        # on an ORM-level session.delete(), never on Query.delete(), which issues a raw bulk
+        # DELETE that bypasses the ORM (and therefore cascades) entirely. Confirmed live: this
+        # exact gap passed every local test (SQLite doesn't enforce FKs by default) and then
+        # threw a real ForeignKeyViolation the first time it ran against production Postgres,
+        # which does. Both must be deleted explicitly, in FK order, before their parent
+        # TeamMission row.
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
             CodeSubmission.query.filter(CodeSubmission.team_mission_id.in_(team_mission_ids)).delete(
                 synchronize_session=False
             )
-            TeamMCQAnswer.query.filter(TeamMCQAnswer.team_mission_id.in_(team_mission_ids)).delete(
-                synchronize_session=False
-            )
+            TeamKnowledgeAnswer.query.filter(
+                TeamKnowledgeAnswer.team_mission_id.in_(team_mission_ids)
+            ).delete(synchronize_session=False)
         TeamMission.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         Fragment.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         ClearanceStamp.query.filter_by(team_id=team.id).delete(synchronize_session=False)
@@ -49,12 +49,16 @@ class AdminResetService:
         """Permanently removes a team and everything tied to it. team_missions/fragments/
         clearance_stamps/leaderboard_snapshots/members all cascade via Team's own
         relationship config (models.py) once db.session.delete(team) runs — only
-        CodeSubmission needs the same manual pre-delete as reset_team, for the same reason."""
+        CodeSubmission and TeamKnowledgeAnswer need the same manual pre-delete as
+        reset_team, for the same reason."""
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
             CodeSubmission.query.filter(CodeSubmission.team_mission_id.in_(team_mission_ids)).delete(
                 synchronize_session=False
             )
+            TeamKnowledgeAnswer.query.filter(
+                TeamKnowledgeAnswer.team_mission_id.in_(team_mission_ids)
+            ).delete(synchronize_session=False)
         db.session.delete(team)
         db.session.commit()
 

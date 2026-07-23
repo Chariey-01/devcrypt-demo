@@ -90,3 +90,21 @@ def test_override_score_rejects_non_integer(app, client):
 
     res = client.post(f"/mod/override-score/{team_mission_id}", data={"score": "not-a-number"})
     assert res.status_code == 400
+
+
+def test_override_score_rejected_once_passed(app, client):
+    team_id, team_mission_id = _setup(app)
+    with app.app_context():
+        tm = TeamMission.query.get(team_mission_id)
+        tm.status = "passed"
+        db.session.commit()
+    _login_gm(client)
+
+    res = client.post(f"/mod/override-score/{team_mission_id}", data={"score": "9999"})
+    assert res.status_code == 409
+
+    with app.app_context():
+        tm = TeamMission.query.get(team_mission_id)
+        team = Team.query.get(team_id)
+        assert tm.score == 10  # untouched — a passed score is immutable through this route
+        assert team.score == 10

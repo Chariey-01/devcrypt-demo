@@ -1,6 +1,6 @@
 """Generate cryptographically random team keys and staff passwords for a real event.
 
-Run this AFTER seed.py (which sets up missions/evidence/MCQs and wipes the whole
+Run this AFTER seed.py (which sets up missions/evidence and wipes the whole
 database). This script only touches Team and User rows — it's safe to re-run any
 time to add teams/staff or rotate everyone's credentials, without touching mission
 content.

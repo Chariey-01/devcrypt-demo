@@ -39,11 +39,11 @@
                 <form method="post" action="{{ url_for('mod.override', team_mission_id=tm.id) }}" class="inline-form">
                   <button type="submit" class="danger">{{ icon('siren', 12) }} Force Pass + Fragment</button>
                 </form>
-                {% endif %}
                 <form method="post" action="{{ url_for('mod.override_score', team_mission_id=tm.id) }}" class="inline-form" style="display:flex;gap:0.3rem;align-items:center;">
                   <input type="number" name="score" value="{{ tm.score }}" style="width:5rem;" aria-label="New score for {{ tm.mission.title }}">
                   <button type="submit" class="ghost">{{ icon('gauge', 12) }} Set Score</button>
                 </form>
+                {% endif %}
               </div>
             </td>
           </tr>

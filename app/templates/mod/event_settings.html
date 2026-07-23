@@ -22,13 +22,12 @@
     <label>Hint limit (per team, for the whole event)
       <input type="number" name="hint_limit" min="0" value="{{ state.hint_limit }}">
     </label>
+    <label>Soft Lock available after this many failed attempts at a booth
+      <input type="number" name="soft_lock_min_attempts" min="0" value="{{ state.soft_lock_min_attempts }}">
+    </label>
     <label style="display:flex;align-items:center;gap:0.5rem;flex-direction:row;">
       <input type="checkbox" name="leaderboard_public" {{ 'checked' if state.leaderboard_public else '' }} style="width:auto;">
       Public leaderboard visible (staff dashboards are never affected by this)
-    </label>
-    <label style="display:flex;align-items:center;gap:0.5rem;flex-direction:row;">
-      <input type="checkbox" name="auto_grading_disabled" {{ 'checked' if state.auto_grading_disabled else '' }} style="width:auto;">
-      {{ icon('siren', 13) }} Emergency: disable automated grading (routes auto-graded submissions to manual review instead)
     </label>
     <button type="submit">{{ icon('check', 13) }} Save Settings</button>
   </form>

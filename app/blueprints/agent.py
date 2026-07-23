@@ -5,10 +5,29 @@ from flask_login import current_user, login_required
 
 from ..decorators import roles_required
 from ..extensions import db
-from ..models import Challenge, EvidenceFile, Hint, Mission, TestCase
+from ..models import (
+    Challenge,
+    CodeSubmission,
+    EvidenceFile,
+    Hint,
+    KnowledgeOption,
+    KnowledgeQuestion,
+    Mission,
+    TeamMission,
+    TestCase,
+)
+from ..services.audit_service import AuditService
+from ..services.cipher_service import CipherService
+from ..services.mission_service import MissionService
+from ..services.scoring_service import ScoringService
 from ..sockets import notify_global
 
 agent_bp = Blueprint("agent", __name__, url_prefix="/agent")
+
+scoring_service = ScoringService()
+cipher_service = CipherService()
+audit_service = AuditService()
+mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
 
 
 def _owned_mission_or_404(mission_id):
@@ -39,6 +58,13 @@ def _owned_asset_or_404(asset_id):
     if asset.mission.owner_agent_id != current_user.id:
         abort(404)
     return asset
+
+
+def _owned_knowledge_question_or_404(question_id):
+    question = KnowledgeQuestion.query.get_or_404(question_id)
+    if question.mission.owner_agent_id != current_user.id:
+        abort(404)
+    return question
 
 
 def _serialize_mission_summary(mission):
@@ -76,6 +102,17 @@ def _serialize_asset(asset):
     return {"id": asset.id, "label": asset.label, "file_type": asset.file_type, "content": asset.content}
 
 
+def _serialize_knowledge_question(q):
+    return {
+        "id": q.id,
+        "question_text": q.question_text,
+        "order_index": q.order_index,
+        "options": [
+            {"id": o.id, "option_text": o.option_text, "is_correct": o.is_correct} for o in q.options
+        ],
+    }
+
+
 def _serialize_mission_detail(mission):
     challenge = mission.challenge
     payload = _serialize_mission_summary(mission)
@@ -83,6 +120,7 @@ def _serialize_mission_detail(mission):
     payload["test_cases"] = []
     payload["hints"] = []
     payload["assets"] = [_serialize_asset(a) for a in mission.evidence_files]
+    payload["knowledge_questions"] = [_serialize_knowledge_question(q) for q in mission.knowledge_questions]
     if challenge:
         payload["challenge"] = {
             "title": challenge.title,
@@ -322,12 +360,15 @@ def upsert_challenge(mission_id):
     challenge.starter_code = data.get("starter_code")
     challenge.solution_code = data.get("solution_code")
     challenge.grading_mode = "auto"
-    challenge.pass_threshold = int(data.get("pass_threshold") or 100)
+    challenge.pass_threshold = int(data.get("pass_threshold") or 80)
     challenge.max_attempts = data.get("max_attempts") or None
     challenge.bonus_points = int(data.get("bonus_points") or 0)
     challenge.time_limit_seconds = int(data.get("time_limit_seconds") or 5)
     difficulty = data.get("difficulty")
     challenge.difficulty = difficulty if difficulty in ("easy", "medium", "hard") else None
+    audit_service.log(
+        current_user, "booth_agent", "challenge_uploaded", "mission", mission.id, metadata=mission.title
+    )
     db.session.commit()
     # Push-triggers-refresh, same as every other live-data change in this app (missions.py,
     # security.py) — never carries the new prompt itself, just tells any connected player to
@@ -544,6 +585,9 @@ def create_asset(mission_id):
         content=content,
     )
     db.session.add(asset)
+    audit_service.log(
+        current_user, "booth_agent", "asset_uploaded", "mission", mission.id, metadata=label
+    )
     db.session.commit()
     return jsonify(_serialize_asset(asset)), 201
 
@@ -556,3 +600,102 @@ def delete_asset(asset_id):
     db.session.delete(asset)
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@agent_bp.route("/missions/<int:mission_id>/knowledge-questions", methods=["POST"])
+@login_required
+@roles_required("booth_agent")
+def create_knowledge_question(mission_id):
+    mission = _owned_mission_or_404(mission_id)
+    data = request.get_json(silent=True) or {}
+    question_text = (data.get("question_text") or "").strip()
+    options_data = [o for o in (data.get("options") or []) if (o.get("option_text") or "").strip()]
+    if not question_text:
+        return jsonify({"error": "question_text is required."}), 400
+    if len(options_data) < 2:
+        return jsonify({"error": "At least 2 options are required."}), 400
+    if sum(1 for o in options_data if o.get("is_correct")) != 1:
+        return jsonify({"error": "Exactly one option must be marked correct."}), 400
+
+    next_order = (
+        db.session.query(db.func.max(KnowledgeQuestion.order_index))
+        .filter_by(mission_id=mission.id)
+        .scalar()
+        or 0
+    ) + 1
+    question = KnowledgeQuestion(mission_id=mission.id, question_text=question_text, order_index=next_order)
+    db.session.add(question)
+    db.session.flush()
+    for o in options_data:
+        db.session.add(
+            KnowledgeOption(
+                question_id=question.id,
+                option_text=o["option_text"].strip(),
+                is_correct=bool(o.get("is_correct")),
+            )
+        )
+    audit_service.log(
+        current_user, "booth_agent", "knowledge_question_uploaded", "mission", mission.id,
+        metadata=question_text,
+    )
+    db.session.commit()
+    notify_global("mission_updated")
+    return jsonify(_serialize_knowledge_question(question)), 201
+
+
+@agent_bp.route("/knowledge-questions/<int:question_id>", methods=["DELETE"])
+@login_required
+@roles_required("booth_agent")
+def delete_knowledge_question(question_id):
+    question = _owned_knowledge_question_or_404(question_id)
+    db.session.delete(question)
+    db.session.commit()
+    notify_global("mission_updated")
+    return jsonify({"ok": True})
+
+
+def _serialize_submission(submission):
+    # Auto-grading is the primary source of truth (see grading_service.py) — this is the
+    # Agent's read-only monitoring view of what it already decided, never a re-grading surface.
+    # Agents are grading-free monitors: they can see everything here, but cannot approve,
+    # reject, or override any outcome.
+    team_mission = submission.team_mission
+    results = json.loads(submission.results_json) if submission.results_json else []
+    visible = [r for r in results if r.get("visibility") == "visible"]
+    hidden = [r for r in results if r.get("visibility") == "hidden"]
+    return {
+        "id": submission.id,
+        "team_mission_id": team_mission.id,
+        "team": team_mission.team.name,
+        "mission": team_mission.mission.title,
+        "created_at": submission.created_at.isoformat(),
+        "code": submission.code,
+        "percent_score": submission.percent_score,
+        "passed_tests": submission.passed_tests,
+        "total_tests": submission.total_tests,
+        "passed": submission.passed,
+        "visible_passed": sum(1 for r in visible if r.get("passed")),
+        "visible_total": len(visible),
+        "hidden_passed": sum(1 for r in hidden if r.get("passed")),
+        "hidden_total": len(hidden),
+        "team_mission_status": team_mission.status,
+        "elapsed_seconds": team_mission.elapsed_seconds,
+        "submission_status": team_mission.submission_status,
+    }
+
+
+@agent_bp.route("/submissions")
+@login_required
+@roles_required("booth_agent")
+def list_submissions():
+    submissions = (
+        CodeSubmission.query.join(TeamMission, CodeSubmission.team_mission_id == TeamMission.id)
+        .join(Mission, TeamMission.mission_id == Mission.id)
+        .filter(Mission.owner_agent_id == current_user.id, CodeSubmission.mode == "submit")
+        .order_by(CodeSubmission.id.desc())
+        .limit(100)
+        .all()
+    )
+    return jsonify({"submissions": [_serialize_submission(s) for s in submissions]})
+
+

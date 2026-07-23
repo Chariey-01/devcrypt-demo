@@ -137,3 +137,32 @@ def test_duplicate_copies_challenge_content_as_a_new_draft(client, app, two_agen
     original = client.get(f"/agent/missions/{mission_id}").get_json()
     assert original["status"] == "published"
     assert len(original["test_cases"]) == 1
+
+
+def test_uploading_a_challenge_is_audit_logged(client, app, two_agents):
+    from app.models import EventLog
+
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    client.put(f"/agent/missions/{mission_id}/challenge", json={"prompt": "Double the input."})
+
+    with app.app_context():
+        actions = [log.action for log in EventLog.query.all()]
+        assert "challenge_uploaded" in actions
+
+
+def test_uploading_an_evidence_asset_is_audit_logged(client, app, two_agents):
+    from app.models import EventLog
+
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    res = client.post(
+        f"/agent/missions/{mission_id}/assets",
+        json={"label": "server.log", "file_type": "log", "content": "connection refused"},
+    )
+    assert res.status_code == 201
+
+    with app.app_context():
+        logged = EventLog.query.filter_by(action="asset_uploaded").first()
+        assert logged is not None
+        assert logged.event_metadata == "server.log"

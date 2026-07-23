@@ -48,9 +48,42 @@ class MissionService:
         tm_map = {tm.mission_id: tm for tm in team.team_missions}
         for mission in self.ordered_for_team(team, missions):
             team_mission = tm_map.get(mission.id)
-            if not team_mission or team_mission.status not in ("passed", "overridden"):
+            if not team_mission or team_mission.status not in ("passed", "overridden", "soft_locked"):
                 return mission, team_mission
         return None, None
+
+    def freeze_submission(self, team_mission, mission, at=None, grading_status="graded"):
+        # Called the instant a deciding submission is *received* — before the grading engine
+        # runs, before a Booth Agent reviews it — so neither of those durations can ever count
+        # against the team's recorded time. Idempotent: once frozen, later calls (a resubmit
+        # spam-click while manual review is pending, or complete_mission() firing later when the
+        # Agent actually resolves it) are no-ops, since the official finish time is whichever
+        # instant this was first called for this attempt. grading_status is set here too, not
+        # left for the caller to set separately — "pending_review" for manual-review queuing,
+        # "graded" (the default) for the auto/cipher paths where the outcome is already known
+        # synchronously — so the whole freeze is one atomic transition instead of two.
+        if team_mission.submitted_at is not None:
+            return
+        now = at or datetime.utcnow()
+        team_mission.submitted_at = now
+        elapsed = (now - team_mission.started_at).total_seconds() if team_mission.started_at else 0
+        team_mission.elapsed_seconds = int(elapsed)
+        if mission.time_limit is not None:
+            team_mission.time_remaining = int(mission.time_limit - elapsed)
+            team_mission.submission_status = "on_time" if elapsed <= mission.time_limit else "overtime"
+        else:
+            team_mission.time_remaining = None
+            team_mission.submission_status = "on_time"
+        team_mission.grading_status = grading_status
+
+    def unfreeze_submission(self, team_mission):
+        # Sends a team back to a live-countdown state for another attempt — used when a Booth
+        # Agent rejects/retries a manual-review submission, or a Game Master resets a mission.
+        team_mission.submitted_at = None
+        team_mission.elapsed_seconds = None
+        team_mission.time_remaining = None
+        team_mission.submission_status = None
+        team_mission.grading_status = None
 
     def get_or_create_team_mission(self, team, mission):
         team_mission = TeamMission.query.filter_by(team_id=team.id, mission_id=mission.id).first()
@@ -66,22 +99,32 @@ class MissionService:
         return team_mission
 
     def complete_mission(
-        self, team, team_mission, mission, status, actor=None, actor_role="team", grading_result=None
+        self, team, team_mission, mission, status, actor=None, actor_role="team", grading_result=None,
+        submitted_at=None,
     ):
-        if team_mission.status in ("passed", "overridden"):
+        if team_mission.status in ("passed", "overridden", "soft_locked"):
             # Already resolved — a double-click, a race between two actors, or a stale
             # reference must not re-award score or insert a second Fragment. This is a
             # fast-path check only, not a race-safe lock: see the IntegrityError handling
             # around the commit below for what actually makes concurrent duplicates safe.
             return None
 
-        all_correct = len(team_mission.mcq_answers) == len(mission.mcqs) and all(
-            answer.is_correct for answer in team_mission.mcq_answers
-        )
-        on_time = mission.time_limit is None or (
-            team_mission.started_at is not None
-            and (datetime.utcnow() - team_mission.started_at).total_seconds() <= mission.time_limit
-        )
+        # Row-lock the team before touching its score: two teammates submitting from
+        # different devices at the same moment would otherwise both read the same starting
+        # team.score in Python and one's ScoringService update would silently clobber the
+        # other's. FOR UPDATE makes the second request's transaction block here until the
+        # first commits, so it re-reads the true post-first-award score instead of a stale one.
+        db.session.refresh(team, with_for_update=True)
+
+        # Freeze now if this deciding submission hasn't already been frozen earlier in its
+        # lifecycle (manual-review queuing calls freeze_submission at submit time, long before
+        # a Booth Agent gets here to resolve it — that freeze wins and this is a no-op). For the
+        # auto-graded/cipher paths, which decide pass/fail synchronously, the caller passes the
+        # timestamp captured *before* grading ran, so grading time is never counted either.
+        self.freeze_submission(team_mission, mission, at=submitted_at)
+        team_mission.grading_status = "graded"
+
+        on_time = team_mission.submission_status != "overtime"
 
         if status == "passed":
             if grading_result is not None:
@@ -90,7 +133,7 @@ class MissionService:
                 # audit) is identical either way.
                 self.scoring.score_auto_graded_pass(team, team_mission, mission.challenge, grading_result, on_time)
             else:
-                self.scoring.score_mission_pass(team, team_mission, mission, all_correct, on_time)
+                self.scoring.score_mission_pass(team, team_mission, mission, on_time)
         else:
             self.scoring.apply_override_penalty(team, team_mission)
 
@@ -138,3 +181,37 @@ class MissionService:
         AnalyticsService(mission_service=self).snapshot_leaderboard()
         notify_global("leaderboard_refresh")
         return fragment_value
+
+    def soft_lock_mission(self, team, team_mission, mission, min_attempts, actor=None, actor_role="team"):
+        # Deliberately NOT a call into complete_mission with a new status value: soft-locking
+        # must never insert a Fragment (that's the one thing complete_mission always does,
+        # right after freeze/score/status), and it pays a flat participation amount instead of
+        # any of the pass/override scoring paths. Sharing complete_mission's Fragment-insert
+        # line for this would mean either special-casing it there (fragile) or accepting a
+        # Fragment nobody should have — so this stays a parallel, shorter method instead.
+        if team_mission.status in ("passed", "overridden", "soft_locked"):
+            return False
+        if team_mission.attempts < min_attempts:
+            return False
+
+        db.session.refresh(team, with_for_update=True)
+        self.freeze_submission(team_mission, mission)
+        self.scoring.score_soft_lock(team, team_mission)
+        team_mission.status = "soft_locked"
+        team_mission.completed_at = datetime.utcnow()
+        team_mission.submission_text = None
+
+        missions = Mission.query.order_by(Mission.order_index).all()
+        next_mission, _ = self.current_mission_for(team, missions)
+        team.booth_current = next_mission.id if next_mission else None
+
+        self.audit.log(actor, actor_role, "mission_soft_locked", "team_mission", team_mission.id)
+        db.session.commit()
+
+        notify_team(team.id, "mission_result")
+        notify_mod("mission_result")
+        from .analytics_service import AnalyticsService
+
+        AnalyticsService(mission_service=self).snapshot_leaderboard()
+        notify_global("leaderboard_refresh")
+        return True

@@ -56,8 +56,11 @@ def data():
     total_missions = len(missions)
     rows = []
     for team in teams:
-        missions_done = sum(1 for tm in team.team_missions if tm.status in ("passed", "overridden"))
+        missions_done = sum(
+            1 for tm in team.team_missions if tm.status in ("passed", "overridden", "soft_locked")
+        )
         overridden = any(tm.status == "overridden" for tm in team.team_missions)
+        soft_locked_missions = [tm.mission.title for tm in team.team_missions if tm.status == "soft_locked"]
         current, _ = mission_service.current_mission_for(team, missions)
         finished = total_missions and missions_done >= total_missions
         rows.append(
@@ -72,6 +75,7 @@ def data():
                 "clearance": len(team.clearance_stamps),
                 "hints_used": team.hints_used,
                 "status": "finished" if finished else ("overridden" if overridden else "active"),
+                "soft_locked_missions": soft_locked_missions,
                 "elapsed": (datetime.utcnow() - team.created_at).total_seconds(),
                 "starting_mission_id": team.starting_mission_id,
                 "members": [{"id": m.id, "name": m.name, "email": m.email} for m in team.members],
@@ -286,6 +290,9 @@ def generate_credential():
         if user is None:
             user = User(email=name, role=kind)
             db.session.add(user)
+        full_name = (data.get("full_name") or "").strip()
+        if full_name:
+            user.full_name = full_name
         user.set_password(secret)
         login_path = "/auth/login"
         qr_lines = [f"DevCrypt Staff ({kind})", f"Email: {name}", f"Password: {secret}"]
@@ -318,6 +325,9 @@ def list_agents():
         {
             "id": agent.id,
             "email": agent.email,
+            "full_name": agent.full_name,
+            "is_active": agent.is_active,
+            "last_login_at": agent.last_login_at.isoformat() if agent.last_login_at else None,
             "missions": [
                 {
                     "id": m.id,
@@ -332,6 +342,56 @@ def list_agents():
     return jsonify({"agents": rows})
 
 
+@mod_bp.route("/agents/<int:agent_id>", methods=["PUT"])
+@login_required
+@roles_required("game_master")
+def update_agent(agent_id):
+    agent = User.query.filter_by(id=agent_id, role="booth_agent").first_or_404()
+    data = request.get_json(silent=True) or {}
+    if "full_name" in data:
+        agent.full_name = (data["full_name"] or "").strip() or None
+    if "email" in data:
+        new_email = (data["email"] or "").strip().lower()
+        if not new_email:
+            return jsonify({"error": "email cannot be blank."}), 400
+        if User.query.filter(User.id != agent.id, User.email == new_email).first():
+            return jsonify({"error": "That email is already in use."}), 409
+        agent.email = new_email
+    audit_service.log(current_user, "game_master", "agent_updated", "user", agent.id)
+    db.session.commit()
+    return jsonify({"ok": True, "id": agent.id, "email": agent.email, "full_name": agent.full_name})
+
+
+@mod_bp.route("/agents/<int:agent_id>/active", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def set_agent_active(agent_id):
+    agent = User.query.filter_by(id=agent_id, role="booth_agent").first_or_404()
+    data = request.get_json(silent=True) or {}
+    agent.is_active = bool(data.get("is_active", True))
+    action = "agent_activated" if agent.is_active else "agent_deactivated"
+    audit_service.log(current_user, "game_master", action, "user", agent.id, metadata=agent.email)
+    db.session.commit()
+    return jsonify({"ok": True, "is_active": agent.is_active})
+
+
+@mod_bp.route("/agents/<int:agent_id>", methods=["DELETE"])
+@login_required
+@roles_required("game_master")
+def delete_agent(agent_id):
+    agent = User.query.filter_by(id=agent_id, role="booth_agent").first_or_404()
+    owned = Mission.query.filter_by(owner_agent_id=agent.id).count()
+    if owned:
+        return jsonify(
+            {"error": f"This agent still owns {owned} booth(s) — reassign or delete those first."}
+        ), 409
+    email = agent.email
+    db.session.delete(agent)
+    audit_service.log(current_user, "game_master", "agent_deleted", metadata=email)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @mod_bp.route("/mission/<int:mission_id>/assign-agent", methods=["POST"])
 @login_required
 @roles_required("game_master")
@@ -343,6 +403,8 @@ def assign_agent(mission_id):
         agent = User.query.get_or_404(agent_id)
         if agent.role != "booth_agent":
             return jsonify({"error": "User is not a booth agent."}), 400
+        if not agent.is_active:
+            return jsonify({"error": "That agent is deactivated — reactivate them before assigning a booth."}), 400
         mission.owner_agent_id = agent.id
     else:
         mission.owner_agent_id = None
@@ -378,6 +440,12 @@ def list_submissions():
 @roles_required("game_master")
 def override_score(team_mission_id):
     team_mission = TeamMission.query.get_or_404(team_mission_id)
+    # Once a mission is resolved, its score is immutable through this route — same rule as
+    # the other override route (mod.override). A passed (or soft-locked) score must never be
+    # silently rewritten; a genuine correction goes through reset-mission first so the change
+    # is auditable as a status transition, not an in-place score edit.
+    if team_mission.status in ("passed", "overridden", "soft_locked"):
+        abort(409)
     try:
         new_score = int(request.form.get("score"))
     except (TypeError, ValueError):
@@ -402,11 +470,12 @@ def override_score(team_mission_id):
 @roles_required("game_master")
 def reset_mission(team_mission_id):
     team_mission = TeamMission.query.get_or_404(team_mission_id)
-    if team_mission.status in ("passed", "overridden"):
+    if team_mission.status in ("passed", "overridden", "soft_locked"):
         abort(409)
     team_mission.penalty_until = None
     team_mission.attempts = 0
     team_mission.submission_text = None
+    mission_service.unfreeze_submission(team_mission)
     audit_service.log(current_user, "game_master", "mission_reset", "team_mission", team_mission.id)
     db.session.commit()
     notify_team(team_mission.team_id, "mission_reset")
@@ -426,9 +495,22 @@ def event_settings():
             state.hint_limit = max(0, int(request.form.get("hint_limit", state.hint_limit)))
         except (TypeError, ValueError):
             pass
+        try:
+            state.soft_lock_min_attempts = max(
+                0, int(request.form.get("soft_lock_min_attempts", state.soft_lock_min_attempts))
+            )
+        except (TypeError, ValueError):
+            pass
         state.leaderboard_public = request.form.get("leaderboard_public") == "on"
-        state.auto_grading_disabled = request.form.get("auto_grading_disabled") == "on"
-        audit_service.log(current_user, "game_master", "event_settings_updated")
+        audit_service.log(
+            current_user,
+            "game_master",
+            "event_settings_updated",
+            metadata=(
+                f"hint_limit={state.hint_limit} leaderboard_public={state.leaderboard_public} "
+                f"soft_lock_min_attempts={state.soft_lock_min_attempts}"
+            ),
+        )
         db.session.commit()
         flash("Event settings saved.", "success")
         return redirect(url_for("mod.event_settings"))
@@ -500,7 +582,7 @@ def broadcast():
 @roles_required("game_master")
 def override(team_mission_id):
     team_mission = TeamMission.query.get_or_404(team_mission_id)
-    if team_mission.status in ("passed", "overridden"):
+    if team_mission.status in ("passed", "overridden", "soft_locked"):
         abort(409)
     mission_service.complete_mission(
         team_mission.team, team_mission, team_mission.mission, "overridden",
