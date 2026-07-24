@@ -97,6 +97,28 @@ def run_migrations_online():
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        if connection.dialect.name == "sqlite":
+            # app/__init__.py deliberately turns PRAGMA foreign_keys ON for every SQLite
+            # connection (so local dev/tests catch real FK violations production's Postgres
+            # would also catch) — but that same engine is reused here, and SQLite's only way to
+            # ALTER a table (what batch_alter_table does under the hood: create a new table,
+            # copy rows, drop the old one, rename) requires FK enforcement to be off for that
+            # swap, or the DROP TABLE step fails with "FOREIGN KEY constraint failed" on any
+            # table something else references (confirmed live: batch_alter_table('users', ...)
+            # in b7d4e0f21a6c). Safe to leave off for the rest of this process — `flask db
+            # upgrade` is a short-lived CLI invocation, not the long-running app, so there's
+            # nothing else on this connection for it to affect.
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            # SQLAlchemy 2.x auto-begins a transaction on a Connection's first execute() — left
+            # open, it silently absorbs Alembic's own context.begin_transaction()/commit below
+            # into itself (Alembic detects the already-active transaction and defers commit
+            # responsibility to whoever started it), so every migration below "succeeds" with no
+            # error and advances the logged revision, but nothing actually reaches disk.
+            # Confirmed live: exit code 0, clean log output, alembic_version unchanged, columns
+            # still missing. Committing this one PRAGMA statement immediately closes that
+            # transaction out, so Alembic's own begin_transaction() starts a fresh one it fully
+            # owns and will actually commit.
+            connection.commit()
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
