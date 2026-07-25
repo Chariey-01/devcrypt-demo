@@ -321,7 +321,8 @@ def submit_challenge():
 
     challenge = mission.challenge
     team_mission = mission_service.get_or_create_team_mission(team, mission)
-    if len(team_mission.knowledge_answers) < len(mission.knowledge_questions):
+    assigned_questions = mission_service.assign_knowledge_subset(team_mission, mission)
+    if len(team_mission.knowledge_answers) < len(assigned_questions):
         return jsonify({"error": "Complete the Knowledge Check before submitting."}), 400
     # Captured before any grading happens below — this, not whenever the response finally gets
     # sent, is the team's official submission instant (mission_service.freeze_submission uses
@@ -505,7 +506,8 @@ def run_visible_tests():
         return jsonify({"error": "This challenge does not support test runs."}), 400
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
-    if len(team_mission.knowledge_answers) < len(mission.knowledge_questions):
+    assigned_questions = mission_service.assign_knowledge_subset(team_mission, mission)
+    if len(team_mission.knowledge_answers) < len(assigned_questions):
         return jsonify({"error": "Complete the Knowledge Check before running tests."}), 400
     data = request.get_json(silent=True) or {}
     code = data.get("code", "")
