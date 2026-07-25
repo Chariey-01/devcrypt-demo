@@ -12,10 +12,13 @@
   let submissions = [];
 
   async function api(method, url, body) {
+    // FormData (file uploads) must go through untouched -- the browser sets its own
+    // multipart boundary in Content-Type, which JSON.stringify-ing the body would break.
+    const isFormData = body instanceof FormData;
     const res = await fetch(url, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      headers: body && !isFormData ? { "Content-Type": "application/json" } : undefined,
+      body: isFormData ? body : body ? JSON.stringify(body) : undefined,
     });
     let data = null;
     try {
@@ -161,7 +164,7 @@
       ${flashText ? `<div class="flash flash-info" style="margin-bottom:0.75rem;">${escapeHtml(flashText)}</div>` : ""}
       ${cards || `<p class="hint-text">${icon("radar", 13)} You don't own any booths yet — create one below.</p>`}
       <form id="create-mission-form" class="auth-form" style="margin-top:0.75rem;">
-        <input type="text" name="title" placeholder="Problem title, e.g. Discovery Node — DEPLOY" required>
+        <input type="text" name="title" placeholder="Problem title, e.g. Elewa — MVP Launch Pipeline" required>
         <input type="text" name="cipher_word" placeholder="Cipher word, e.g. DEPLOY" required>
         <textarea name="narrative" placeholder="Narrative / booth intro shown to teams" required rows="2"></textarea>
         <input type="number" name="time_limit" placeholder="Time limit (seconds, optional)">
@@ -615,7 +618,11 @@
         (a) => `
       <div class="card" style="margin-bottom:0.5rem;">
         <strong>${icon("file-lock-2", 13)} ${escapeHtml(a.label)}</strong> <span class="badge">${escapeHtml(a.file_type)}</span>
-        <pre>${escapeHtml(a.content)}</pre>
+        ${
+          a.has_binary
+            ? `<p><a href="/agent/assets/${a.id}/download" target="_blank" rel="noopener">${icon("radar", 12)} ${escapeHtml(a.filename || "download")}</a></p>`
+            : `<pre>${escapeHtml(a.content)}</pre>`
+        }
         <button type="button" class="danger" data-remove-asset="${a.id}">${icon("x", 12)} Remove</button>
       </div>`
       )
@@ -626,7 +633,12 @@
         <input type="text" name="label" placeholder="Filename, e.g. login.py" required>
         <input type="text" name="file_type" placeholder="Type, e.g. python, log, sql" value="text">
         <textarea name="content" rows="4" class="mono" placeholder="Paste the vulnerable/incomplete source or supporting file content" required></textarea>
-        <button type="submit">${icon("zap", 13)} Upload File</button>
+        <button type="submit">${icon("zap", 13)} Upload Text</button>
+      </form>
+      <form id="asset-file-form" class="auth-form" style="margin-top:0.5rem;">
+        <input type="text" name="label" placeholder="Label, e.g. Screenshot of the crash" required>
+        <input type="file" name="file" accept=".png,.jpg,.jpeg,.pdf" required>
+        <button type="submit">${icon("zap", 13)} Upload Image/PDF</button>
       </form>
     `;
     el.querySelectorAll("[data-remove-asset]").forEach((btn) =>
@@ -644,6 +656,16 @@
         content: fd.get("content"),
       });
       await refreshSelected();
+    });
+    document.getElementById("asset-file-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        await api("POST", `/agent/missions/${selected.id}/assets`, fd);
+        await refreshSelected();
+      } catch (err) {
+        flash(err.message);
+      }
     });
   }
 

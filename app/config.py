@@ -52,6 +52,11 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = engine_options_for(SQLALCHEMY_DATABASE_URI)
     EVENT_SALT = os.getenv("EVENT_SALT", "devcrypt-demo-event-salt")
 
+    # Slightly above the 5MB evidence-file cap enforced in app/blueprints/agent.py, leaving
+    # headroom for multipart form overhead -- lets Flask reject an oversized upload before
+    # buffering the whole thing into memory.
+    MAX_CONTENT_LENGTH = 6 * 1024 * 1024
+
     # Server-only final-flag material — see app/services/final_flag_service.py and
     # scripts/derive_final_flag.py. Never set in seed data, never committed, never sent to the
     # client except via the one gated route once a team has actually finished every vault.

@@ -64,12 +64,26 @@ def test_full_agent_authored_challenge_reaches_the_player_unchanged(client, app)
     hint_res = client.post(f"/agent/missions/{mission_id}/hints", json={"text": "Multiply by two."})
     assert hint_res.status_code == 201
 
-    # 5. An evidence file.
+    # 5. An evidence file (text mode) and a real binary upload.
     asset_res = client.post(
         f"/agent/missions/{mission_id}/assets",
         json={"label": "server.log", "file_type": "log", "content": "connection refused"},
     )
     assert asset_res.status_code == 201
+
+    import io
+
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"
+        b"\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    binary_asset_res = client.post(
+        f"/agent/missions/{mission_id}/assets",
+        data={"label": "crash.png", "file": (io.BytesIO(png_bytes), "crash.png")},
+        content_type="multipart/form-data",
+    )
+    assert binary_asset_res.status_code == 201
+    binary_asset_id = binary_asset_res.get_json()["id"]
 
     # Still draft — publishing requires an explicit action.
     publish_missing_res = client.get(f"/agent/missions/{mission_id}")
@@ -99,6 +113,15 @@ def test_full_agent_authored_challenge_reaches_the_player_unchanged(client, app)
 
     # Evidence file surfaces on the player side.
     assert any(e["label"] == "server.log" and e["content"] == "connection refused" for e in mission["evidence_files"])
+
+    # Binary evidence: never leaks raw bytes into the JSON payload, and is downloadable.
+    binary_entry = next(e for e in mission["evidence_files"] if e["label"] == "crash.png")
+    assert binary_entry["has_binary"] is True
+    assert binary_entry["content"] == ""
+    assert binary_entry["mime_type"] == "image/png"
+    download_res = player_client.get(f"/missions/assets/{binary_asset_id}/download")
+    assert download_res.status_code == 200
+    assert download_res.data == png_bytes
 
     # 7. Player runs visible tests — only the visible case executes.
     run_res = player_client.post(

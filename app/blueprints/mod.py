@@ -8,7 +8,17 @@ from flask_login import current_user, login_required
 
 from ..decorators import roles_required
 from ..extensions import db
-from ..models import Challenge, CodeSubmission, EventLog, Mission, Team, TeamMember, TeamMission, User
+from ..models import (
+    Challenge,
+    CodeSubmission,
+    EventLog,
+    FinalFlagConfirmation,
+    Mission,
+    Team,
+    TeamMember,
+    TeamMission,
+    User,
+)
 from ..repositories.team_repo import TeamRepository
 from ..services.admin_reset_service import AdminResetService
 from ..services.analytics_service import AnalyticsService
@@ -465,6 +475,42 @@ def list_submissions():
         for s in subs
     ]
     return jsonify({"submissions": rows})
+
+
+@mod_bp.route("/final-flag/pending")
+@login_required
+@roles_required("game_master")
+def list_final_flag_pending():
+    pending = (
+        FinalFlagConfirmation.query.filter(FinalFlagConfirmation.confirmed_at.is_(None))
+        .order_by(FinalFlagConfirmation.requested_at)
+        .all()
+    )
+    rows = [
+        {
+            "team_id": c.team_id,
+            "team_name": c.team.name,
+            "requested_at": c.requested_at.isoformat() if c.requested_at else None,
+        }
+        for c in pending
+    ]
+    return jsonify({"pending": rows})
+
+
+@mod_bp.route("/final-flag/<int:team_id>/confirm", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def confirm_final_flag(team_id):
+    confirmation = FinalFlagConfirmation.query.filter_by(team_id=team_id).first_or_404()
+    confirmation.confirmed_by = current_user.id
+    confirmation.confirmed_at = datetime.utcnow()
+    audit_service.log(
+        current_user, "game_master", "final_flag_confirmed", "team", team_id, metadata=confirmation.team.name
+    )
+    db.session.commit()
+    notify_team(team_id, "final_flag_confirmed")
+    notify_mod("final_flag_confirmed")
+    return jsonify({"ok": True})
 
 
 @mod_bp.route("/override-score/<int:team_mission_id>", methods=["POST"])

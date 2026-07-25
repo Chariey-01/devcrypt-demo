@@ -1075,6 +1075,19 @@ button:disabled {
   font-family: var(--font-mono);
 }
 
+.cipher-word-tagline {
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 0.15rem;
+}
+
+.mission-tagline {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin: 0.2rem 0 0;
+}
+
 /* Recovered fragments — presented as small evidence cards, not plain pills. */
 
 .fragment-rail {

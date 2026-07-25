@@ -225,7 +225,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // Fragment-unlock form state. vaults: null until /final-flag/requirements has loaded, then
   // the ordered [{mission_id, title}] list to render one input per. flag: set once the server
   // has actually returned it. fieldErrors: mission_ids the last submit attempt got wrong.
-  const finalFlagState = { vaults: null, flag: null, formError: null, fieldErrors: new Set() };
+  const finalFlagState = {
+    vaults: null,
+    flag: null,
+    status: null,
+    statusChecking: false,
+    formError: null,
+    fieldErrors: new Set(),
+  };
   // Typed-but-not-submitted fragment values, keyed by mission_id. renderFinishedPanel rebuilds
   // the whole form's innerHTML on every poll/socket update, which would otherwise wipe these
   // inputs mid-keystroke -- restored into every render below regardless of what triggered it,
@@ -401,6 +408,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       wrap.appendChild(letters);
       wrap.appendChild(title);
+      if (word.tagline) {
+        const tagline = document.createElement("div");
+        tagline.className = "cipher-word-tagline";
+        tagline.textContent = word.tagline;
+        wrap.appendChild(tagline);
+      }
       el.appendChild(wrap);
     });
   }
@@ -697,6 +710,25 @@ document.addEventListener("DOMContentLoaded", () => {
         "unlock",
         16
       )} ${escapeHtml(finalFlagState.flag)}</p>`;
+    } else if (finalFlagState.status === "pending") {
+      unlockSection = `<p class="hint-text">${icon(
+        "timer",
+        13
+      )} Fragments verified — awaiting Game Master confirmation at the Command Centre&hellip;</p>`;
+      if (!finalFlagState.statusChecking) {
+        finalFlagState.statusChecking = true;
+        api("/missions/final-flag/status")
+          .then((res) => {
+            finalFlagState.statusChecking = false;
+            if (res.ok && res.data.status === "confirmed") {
+              finalFlagState.flag = res.data.flag;
+              renderFinishedPanel(finishedPanel, data);
+            }
+          })
+          .catch(() => {
+            finalFlagState.statusChecking = false;
+          });
+      }
     } else if (finalFlagState.vaults === null) {
       unlockSection = `<p class="hint-text">${icon("timer", 13)} Checking vault status&hellip;</p>`;
       api("/missions/final-flag/requirements")
@@ -767,9 +799,13 @@ document.addEventListener("DOMContentLoaded", () => {
         withLoadingButton(submitBtn, "Unlocking&hellip;", async () => {
           const res = await api("/missions/final-flag", { method: "POST", body: JSON.stringify({ fragments }) });
           if (res.ok) {
-            finalFlagState.flag = res.data.flag;
             finalFlagState.formError = null;
             finalFlagState.fieldErrors = new Set();
+            if (res.data.status === "confirmed") {
+              finalFlagState.flag = res.data.flag;
+            } else {
+              finalFlagState.status = "pending";
+            }
             Object.keys(fragmentDrafts).forEach((key) => delete fragmentDrafts[key]);
           } else {
             finalFlagState.formError = (res.data && res.data.error) || "Unlock failed.";
@@ -866,9 +902,20 @@ document.addEventListener("DOMContentLoaded", () => {
           )} ${escapeHtml(e.label)}</button>`
       )
       .join("");
-    const evidenceContent = mission.evidence_files[activeTab]
-      ? escapeHtml(mission.evidence_files[activeTab].content)
-      : "";
+    const activeEvidence = mission.evidence_files[activeTab];
+    let evidenceContent = "";
+    if (activeEvidence && activeEvidence.has_binary) {
+      const downloadUrl = `/missions/assets/${activeEvidence.id}/download`;
+      evidenceContent = (activeEvidence.mime_type || "").startsWith("image/")
+        ? `<a href="${downloadUrl}" target="_blank" rel="noopener"><img src="${downloadUrl}" alt="${escapeHtml(
+            activeEvidence.filename || activeEvidence.label
+          )}" style="max-width:100%;border-radius:4px;"></a>`
+        : `<a href="${downloadUrl}" target="_blank" rel="noopener">${icon("file-lock-2", 13)} ${escapeHtml(
+            activeEvidence.filename || activeEvidence.label
+          )}</a>`;
+    } else if (activeEvidence) {
+      evidenceContent = escapeHtml(activeEvidence.content);
+    }
 
     let knowledgeCheckHtml = "";
     if ((mission.knowledge_questions || []).length && !mission.knowledge_check_complete) {
@@ -966,6 +1013,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div>
           <p class="mission-id">${icon("hash", 12)} MISSION ${missionCode}</p>
           <h2>${escapeHtml(mission.title)}</h2>
+          ${mission.tagline ? `<p class="mission-tagline">${escapeHtml(mission.tagline)}</p>` : ""}
         </div>
         <span class="meta-tag">${icon("unlock", 12)} ACTIVE</span>
       </div>

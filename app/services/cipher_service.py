@@ -58,6 +58,7 @@ class CipherService:
                 {
                     "mission_id": mission.id,
                     "title": mission.title,
+                    "tagline": mission.tagline,
                     "display": self.board_for_mission(mission, revealed),
                     "revealed": [i in revealed for i in range(len(mission.cipher_word))],
                     "complete": bool(team_mission and team_mission.status in ("passed", "overridden")),

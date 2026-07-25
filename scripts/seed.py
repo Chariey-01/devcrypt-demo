@@ -36,13 +36,14 @@ from app.models import (
 #                        partner universities internationally (unispotconsultants.co.ke).
 #   - Close the Gap    — Mombasa-based IT Asset Disposition / e-waste circular-economy
 #                        organisation; refurbishes devices and securely wipes data before reuse.
-#   - Zuberi Interactive — Nairobi-based African game studio (BodaLands, Ganga) building mobile
+#   - Zuberi           — Nairobi-based African game studio (BodaLands, Ganga) building mobile
 #                        games rooted in East African culture.
 #   - TBM Limited      — Nairobi-based IT/cybersecurity/cloud services firm, a 30+ year IBM
 #                        business partner (Trans Business Machines).
 MISSIONS = [
     {
         "title": "Elewa — MVP Launch Pipeline",
+        "tagline": "Building digital products and engineering talent.",
         "cipher_word": "LAUNCH",
         "booth_id": 1,
         "order_index": 1,
@@ -107,6 +108,7 @@ MISSIONS = [
     },
     {
         "title": "Workforce Africa — Access Roster Audit",
+        "tagline": "Pan-African HR, EOR and workforce management platform.",
         "cipher_word": "ACCESS",
         "booth_id": 2,
         "order_index": 2,
@@ -171,6 +173,7 @@ MISSIONS = [
     },
     {
         "title": "Unispot — Application Routing Desk",
+        "tagline": "Routing student applications to universities abroad.",
         "cipher_word": "ROUTE",
         "booth_id": 3,
         "order_index": 3,
@@ -235,6 +238,7 @@ MISSIONS = [
     },
     {
         "title": "Close the Gap — Secure Wipe Audit",
+        "tagline": "Circular-economy IT refurbishment and secure e-waste disposal.",
         "cipher_word": "WIPED",
         "booth_id": 4,
         "order_index": 4,
@@ -298,13 +302,14 @@ MISSIONS = [
         ],
     },
     {
-        "title": "Zuberi Interactive — BodaLands Leaderboard",
+        "title": "Zuberi — BodaLands Leaderboard",
+        "tagline": "African game studio building mobile games rooted in local culture.",
         "cipher_word": "RIDERS",
         "booth_id": 5,
         "order_index": 5,
         "time_limit": 600,
         "narrative": (
-            "Zuberi Interactive builds BodaLands, a mobile game rooted in Nairobi's motorcycle "
+            "Zuberi builds BodaLands, a mobile game rooted in Nairobi's motorcycle "
             "taxi culture. GhostRoute-7 knocked out the leaderboard service — it needs to "
             "recover the top score from a batch of submitted match results."
         ),
@@ -362,6 +367,7 @@ MISSIONS = [
     },
     {
         "title": "TBM Limited — Grid Core Restoration",
+        "tagline": "Cybersecurity, cloud and enterprise IT services, IBM business partner.",
         "cipher_word": "RESTORE",
         "booth_id": 6,
         "order_index": 6,
@@ -463,6 +469,7 @@ def seed_demo():
         for i, spec in enumerate(MISSIONS):
             mission = Mission(
                 title=spec["title"],
+                tagline=spec.get("tagline"),
                 cipher_word=spec["cipher_word"],
                 type="code",
                 narrative=spec["narrative"],

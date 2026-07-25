@@ -1,7 +1,8 @@
 import json
 
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, Response, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
+from werkzeug.utils import secure_filename
 
 from ..decorators import roles_required
 from ..extensions import db
@@ -23,6 +24,31 @@ from ..services.scoring_service import ScoringService
 from ..sockets import notify_global
 
 agent_bp = Blueprint("agent", __name__, url_prefix="/agent")
+
+# Evidence-file binary upload: extension allowlist + magic-byte signature per extension, so a
+# renamed file can't slip past the extension check. Kept deliberately small (images + PDF only,
+# no video/archives) -- this is a hackathon booth's evidence attachment, not a general file store.
+MAX_ASSET_BYTES = 5 * 1024 * 1024
+ASSET_SIGNATURES = {
+    "png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    "jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    "jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    "pdf": ("application/pdf", b"%PDF"),
+}
+
+
+def _validate_asset_upload(file_storage):
+    filename = secure_filename(file_storage.filename or "")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ASSET_SIGNATURES:
+        return None, "Only .png, .jpg, .jpeg, and .pdf files are allowed."
+    mime_type, signature = ASSET_SIGNATURES[ext]
+    raw = file_storage.read()
+    if len(raw) > MAX_ASSET_BYTES:
+        return None, "File is too large (5MB max)."
+    if not raw.startswith(signature):
+        return None, "File content doesn't match its extension."
+    return (raw, mime_type, filename), None
 
 scoring_service = ScoringService()
 cipher_service = CipherService()
@@ -99,7 +125,15 @@ def _serialize_hint(hint):
 
 
 def _serialize_asset(asset):
-    return {"id": asset.id, "label": asset.label, "file_type": asset.file_type, "content": asset.content}
+    return {
+        "id": asset.id,
+        "label": asset.label,
+        "file_type": asset.file_type,
+        "content": asset.content,
+        "has_binary": bool(asset.data),
+        "mime_type": asset.mime_type,
+        "filename": asset.filename,
+    }
 
 
 def _serialize_knowledge_question(q):
@@ -573,23 +607,58 @@ def delete_hint(hint_id):
 @roles_required("booth_agent")
 def create_asset(mission_id):
     mission = _owned_mission_or_404(mission_id)
-    data = request.get_json(silent=True) or {}
-    label = (data.get("label") or "").strip()
-    content = data.get("content") or ""
-    if not label or not content:
-        return jsonify({"error": "label and content are required."}), 400
-    asset = EvidenceFile(
-        mission_id=mission.id,
-        label=label,
-        file_type=data.get("file_type") or "text",
-        content=content,
-    )
+
+    uploaded = request.files.get("file")
+    if uploaded:
+        label = (request.form.get("label") or "").strip()
+        if not label:
+            return jsonify({"error": "label is required."}), 400
+        result, error = _validate_asset_upload(uploaded)
+        if error:
+            return jsonify({"error": error}), 400
+        raw, mime_type, filename = result
+        asset = EvidenceFile(
+            mission_id=mission.id,
+            label=label,
+            file_type="image" if mime_type.startswith("image/") else "pdf",
+            content="",
+            data=raw,
+            mime_type=mime_type,
+            filename=filename,
+        )
+    else:
+        data = request.get_json(silent=True) or {}
+        label = (data.get("label") or "").strip()
+        content = data.get("content") or ""
+        if not label or not content:
+            return jsonify({"error": "label and content are required."}), 400
+        asset = EvidenceFile(
+            mission_id=mission.id,
+            label=label,
+            file_type=data.get("file_type") or "text",
+            content=content,
+        )
+
     db.session.add(asset)
     audit_service.log(
         current_user, "booth_agent", "asset_uploaded", "mission", mission.id, metadata=label
     )
     db.session.commit()
     return jsonify(_serialize_asset(asset)), 201
+
+
+@agent_bp.route("/assets/<int:asset_id>/download")
+@login_required
+@roles_required("booth_agent")
+def download_asset(asset_id):
+    asset = _owned_asset_or_404(asset_id)
+    if not asset.data:
+        abort(404)
+    return Response(
+        asset.data,
+        mimetype=asset.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{asset.filename or asset.label}"'},
+    )
 
 
 @agent_bp.route("/assets/<int:asset_id>", methods=["DELETE"])

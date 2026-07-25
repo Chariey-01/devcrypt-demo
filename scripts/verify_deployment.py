@@ -17,11 +17,9 @@ Usage:
     # Against a staging deployment (after running seed.py against it once):
     python3 scripts/verify_deployment.py --url https://your-app.up.railway.app
 
-    # --seed-grading-check: a fresh team starts at mission 1 ("Discovery Node"), which is
-    # manual-review, not auto-graded — the only auto-graded mission in the default seed data is
-    # the final vault (mission 6), five missions away. Without this flag, "Automated grading"
-    # never actually exercises the grading engine on a fresh run — it just reports "not
-    # applicable," which would silently mask a real grading bug. This flag imports the app
+    # --seed-grading-check: without it, "Automated grading" never actually exercises the grading
+    # engine on a fresh run against an event-specific seed it can't assume the shape of — it just
+    # reports "not applicable," which would silently mask a real grading bug. This flag imports the app
     # directly and inserts one auto-graded mission ahead of Alpha Squad's queue instead
     # (requires DATABASE_URL to point at the *same* database --url is serving, e.g. run this
     # from the same shell you'd run `flask db upgrade`/`deploy_db_setup.py` from):

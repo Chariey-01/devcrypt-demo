@@ -5,7 +5,7 @@ import pytest
 from app import create_app
 from app.config import Config, engine_options_for
 from app.extensions import db
-from app.models import Fragment, Mission, Team, TeamMission
+from app.models import Fragment, Mission, Team, TeamMission, User
 from app.services.final_flag_service import FinalFlagService
 
 TEST_SALT = "test-salt-for-final-flag"
@@ -92,6 +92,27 @@ def _post_flag(client, fragments):
     return client.post("/missions/final-flag", data=json.dumps({"fragments": fragments}), content_type="application/json")
 
 
+def _login_gm(app, client, email="gm@test.local"):
+    with app.app_context():
+        if not User.query.filter_by(email=email).first():
+            gm = User(email=email, role="game_master")
+            gm.set_password("pw")
+            db.session.add(gm)
+            db.session.commit()
+    return client.post("/auth/login", data={"email": email, "password": "pw"})
+
+
+def _confirm_final_flag(app, team_id, gm_client=None):
+    # A Game Master confirming from the Command Centre — deliberately a *separate* client from
+    # the team's own, mirroring a different device/browser, since nothing about confirmation
+    # should depend on which client session requested it.
+    gm_client = gm_client or app.test_client()
+    _login_gm(app, gm_client)
+    res = gm_client.post(f"/mod/final-flag/{team_id}/confirm")
+    assert res.status_code == 200, res.get_json()
+    return res
+
+
 def test_requirements_denied_before_any_mission_passed(flag_app_and_missions):
     app, mission_ids, team_id = flag_app_and_missions
     client = app.test_client()
@@ -162,9 +183,18 @@ def test_final_flag_reconstructed_with_correct_fragments(flag_app_and_missions):
     # cipher_service.solve() does elsewhere in this codebase.
     correct = {str(mid): f"  f{mid}:xx  " for mid in mission_ids}
 
+    # Correct fragments alone only open the gate — the flag itself waits on a Game Master.
     res = _post_flag(client, correct)
     assert res.status_code == 200
-    assert res.get_json()["flag"] == REAL_FLAG
+    assert res.get_json() == {"status": "pending"}
+
+    _confirm_final_flag(app, team_id)
+
+    res = _post_flag(client, correct)
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["status"] == "confirmed"
+    assert body["flag"] == REAL_FLAG
 
 
 def test_final_flag_wrong_salt_fails_closed_instead_of_returning_garbage(flag_app_and_missions):
@@ -174,11 +204,17 @@ def test_final_flag_wrong_salt_fails_closed_instead_of_returning_garbage(flag_ap
     # errors="replace" and hand the team mojibake as if it were their real flag with a 200 OK.
     app, mission_ids, team_id = flag_app_and_missions
     _pass_all_missions_with_fragments(app, team_id, mission_ids)
-    app.config["EVENT_SALT"] = "a-completely-different-salt-than-the-one-used-to-encrypt"
     client = app.test_client()
     _login(client)
 
     correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    res = _post_flag(client, correct)
+    assert res.get_json() == {"status": "pending"}
+
+    _confirm_final_flag(app, team_id)
+    # Salt rotated between the request and the confirmation being acted on.
+    app.config["EVENT_SALT"] = "a-completely-different-salt-than-the-one-used-to-encrypt"
+
     res = _post_flag(client, correct)
 
     assert res.status_code == 500
@@ -218,7 +254,11 @@ def test_six_fragments_reconstruct_the_real_event_flag():
 
     correct = {str(mid): f"F{mid}:XX" for mid in EVENT_MISSION_IDS}
     res = _post_flag(client, correct)
+    assert res.get_json() == {"status": "pending"}
 
+    _confirm_final_flag(app, team_id)
+
+    res = _post_flag(client, correct)
     assert res.status_code == 200
     assert res.get_json()["flag"] == "M3T4V3R$3"
 
@@ -237,6 +277,11 @@ def test_event_flag_reconstruction_is_repeatable_across_ten_consecutive_runs():
         client.post("/auth/team-login", data={"name": f"Run{i}", "key": f"RUNKEY{i}"})
 
         correct = {str(mid): f"F{mid}:XX" for mid in EVENT_MISSION_IDS}
+        res = _post_flag(client, correct)
+        assert res.get_json() == {"status": "pending"}, f"run {i}: {res.get_json()}"
+
+        _confirm_final_flag(app, team_id, gm_client=app.test_client())
+
         res = _post_flag(client, correct)
 
         assert res.status_code == 200, f"run {i} failed with status {res.status_code}: {res.get_json()}"
@@ -312,6 +357,62 @@ def test_final_flag_rejects_fragments_swapped_between_two_missions():
 
     assert res.status_code == 400
     assert set(res.get_json()["incorrect_mission_ids"]) == {mission_a, mission_b}
+
+
+def test_final_flag_confirm_requires_game_master_role(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+    correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    _post_flag(client, correct)
+
+    # No login at all -- confirm requires a staff session.
+    res = app.test_client().post(f"/mod/final-flag/{team_id}/confirm")
+    assert res.status_code in (302, 401, 403)
+
+
+def test_final_flag_confirm_unknown_team_404s(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    gm_client = app.test_client()
+    _login_gm(app, gm_client)
+
+    res = gm_client.post(f"/mod/final-flag/{team_id}/confirm")
+    assert res.status_code == 404
+
+
+def test_final_flag_confirm_twice_is_idempotent(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+    correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    _post_flag(client, correct)
+
+    _confirm_final_flag(app, team_id)
+    _confirm_final_flag(app, team_id)  # second confirm must not error
+
+    res = _post_flag(client, correct)
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "confirmed"
+
+
+def test_final_flag_status_reflects_none_pending_and_confirmed(flag_app_and_missions):
+    app, mission_ids, team_id = flag_app_and_missions
+    _pass_all_missions_with_fragments(app, team_id, mission_ids)
+    client = app.test_client()
+    _login(client)
+
+    assert client.get("/missions/final-flag/status").get_json() == {"status": "none"}
+
+    correct = {str(mid): f"F{mid}:XX" for mid in mission_ids}
+    _post_flag(client, correct)
+    assert client.get("/missions/final-flag/status").get_json() == {"status": "pending"}
+
+    _confirm_final_flag(app, team_id)
+    body = client.get("/missions/final-flag/status").get_json()
+    assert body["status"] == "confirmed"
+    assert body["flag"] == REAL_FLAG
 
 
 def test_final_flag_rejects_the_same_fragment_value_reused_across_two_missions():

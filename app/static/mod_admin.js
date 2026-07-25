@@ -424,6 +424,41 @@
       </div>`;
   }
 
+  async function refreshFinalFlagPending() {
+    const el = document.getElementById("final-flag-pending");
+    if (!el) return;
+    const data = await api("GET", "/mod/final-flag/pending");
+    const rows = data.pending
+      .map(
+        (p) => `
+      <tr>
+        <td>${escapeHtml(p.team_name)}</td>
+        <td>${escapeHtml(p.requested_at || "—")}</td>
+        <td><button type="button" class="ghost" data-confirm-final-flag="${p.team_id}">${icon("check", 13)} Confirm</button></td>
+      </tr>`
+      )
+      .join("");
+    el.innerHTML = `
+      <h3>${icon("shield-check", 14)} Final Flag — Pending Confirmation</h3>
+      <div class="data-grid-wrap">
+        <table class="data-table">
+          <thead><tr><th>Team</th><th>Requested</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="3" class="hint-text">No teams currently awaiting confirmation.</td></tr>`}</tbody>
+        </table>
+      </div>`;
+    el.querySelectorAll("[data-confirm-final-flag]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await api("POST", `/mod/final-flag/${btn.dataset.confirmFinalFlag}/confirm`);
+          await refreshFinalFlagPending();
+          flash("Final flag confirmed for that team.");
+        } catch (err) {
+          flash(err.message);
+        }
+      });
+    });
+  }
+
   async function refreshActivity() {
     const el = document.getElementById("activity-feed");
     if (!el) return;
@@ -465,6 +500,7 @@
     socket.on("mod_update", () => {
       refreshSubmissions().catch(() => {});
       refreshActivity().catch(() => {});
+      refreshFinalFlagPending().catch(() => {});
     });
   }
 
@@ -479,8 +515,10 @@
   loadAll().catch((err) => flash(err.message));
   refreshSubmissions().catch(() => {});
   refreshActivity().catch(() => {});
+  refreshFinalFlagPending().catch(() => {});
   setInterval(() => {
     refreshSubmissions().catch(() => {});
     refreshActivity().catch(() => {});
+    refreshFinalFlagPending().catch(() => {});
   }, 3000);
 })();

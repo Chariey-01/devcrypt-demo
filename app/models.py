@@ -85,6 +85,9 @@ class Mission(db.Model):
     title = db.Column(db.String(120), nullable=False)
     type = db.Column(db.String(40), nullable=False)
     narrative = db.Column(db.Text, nullable=False)
+    # Short employer-facing line shown on the cipher card and booth panel, distinct from the
+    # full narrative paragraph. Nullable — rows without one just render no tagline.
+    tagline = db.Column(db.String(255), nullable=True)
     cipher_word = db.Column(db.String(20), nullable=False)
     order_index = db.Column(db.Integer, default=0)
     time_limit = db.Column(db.Integer, nullable=True)
@@ -118,6 +121,12 @@ class EvidenceFile(db.Model):
     label = db.Column(db.String(80), nullable=False)
     file_type = db.Column(db.String(40), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    # Real uploaded file (image/PDF), stored as bytes in the DB rather than local disk since
+    # Railway has no persistent filesystem guarantee. NULL/"" content for these rows -- text-mode
+    # assets (the original use case) leave these three columns NULL instead.
+    data = db.Column(db.LargeBinary, nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    filename = db.Column(db.String(255), nullable=True)
 
 
 class KnowledgeQuestion(db.Model):
@@ -285,6 +294,26 @@ class Fragment(db.Model):
     revealed_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint("team_id", "mission_id"),)
+
+
+class FinalFlagConfirmation(db.Model):
+    """One row per team, created the moment their fragments first validate correctly, at the
+    Command Centre. The flag is never reconstructed/returned to the team until a Game Master
+    sets confirmed_by/confirmed_at here — see /missions/final-flag (app/blueprints/missions.py)
+    and the Game Master confirm route (app/blueprints/mod.py). No reject state: an unconfirmed
+    row just stays pending indefinitely, re-checkable anytime. Modeled on ClearanceStamp's
+    "one-time staff-confirmed gate" shape."""
+
+    __tablename__ = "final_flag_confirmations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False, unique=True)
+    requested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    confirmed_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    confirmed_at = db.Column(db.DateTime, nullable=True)
+
+    team = db.relationship("Team")
+    confirmer = db.relationship("User")
 
 
 class ClearanceStamp(db.Model):

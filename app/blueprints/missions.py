@@ -2,11 +2,19 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, abort, current_app, jsonify, render_template, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
-from ..models import CodeSubmission, Fragment, Mission, TeamKnowledgeAnswer, TeamMission
+from ..models import (
+    CodeSubmission,
+    EvidenceFile,
+    Fragment,
+    FinalFlagConfirmation,
+    Mission,
+    TeamKnowledgeAnswer,
+    TeamMission,
+)
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.event_service import EventService
@@ -176,6 +184,7 @@ def status():
         payload["mission"] = {
             "id": mission.id,
             "title": mission.title,
+            "tagline": mission.tagline,
             "narrative": mission.narrative,
             "time_limit": mission.time_limit,
             "started_at": team_mission.started_at.isoformat() if team_mission.started_at else None,
@@ -191,7 +200,15 @@ def status():
             "submission_status": team_mission.submission_status,
             "grading_status": team_mission.grading_status,
             "evidence_files": [
-                {"label": e.label, "file_type": e.file_type, "content": e.content}
+                {
+                    "id": e.id,
+                    "label": e.label,
+                    "file_type": e.file_type,
+                    "content": e.content,
+                    "has_binary": bool(e.data),
+                    "mime_type": e.mime_type,
+                    "filename": e.filename,
+                }
                 for e in mission.evidence_files
             ],
             "challenge": _serialize_challenge(mission.challenge, team_mission)
@@ -205,6 +222,22 @@ def status():
         }
 
     return jsonify(payload)
+
+
+@missions_bp.route("/assets/<int:asset_id>/download")
+@team_required
+def download_asset(asset_id):
+    # Same trust level the "content" field of a text-mode evidence asset already has today —
+    # served to any authenticated team, not scoped to whichever mission it's currently on. No
+    # ownership beyond "you're a logged-in team" is enforced elsewhere for evidence content either.
+    asset = EvidenceFile.query.get_or_404(asset_id)
+    if not asset.data:
+        abort(404)
+    return Response(
+        asset.data,
+        mimetype=asset.mime_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{asset.filename or asset.label}"'},
+    )
 
 
 @missions_bp.route("/knowledge-check/<int:question_id>/answer", methods=["POST"])
@@ -572,6 +605,53 @@ def final_flag():
     if wrong:
         return jsonify({"error": "One or more fragments don't match.", "incorrect_mission_ids": wrong}), 400
 
+    # Fragments are correct, but the flag itself is never reconstructed/returned here — a Game
+    # Master must confirm at the Command Centre first (see /mod/final-flag/<team_id>/confirm in
+    # app/blueprints/mod.py). This route only opens or reports on that pending gate.
+    confirmation = FinalFlagConfirmation.query.filter_by(team_id=team.id).first()
+    if confirmation is None:
+        confirmation = FinalFlagConfirmation(team_id=team.id)
+        db.session.add(confirmation)
+        audit_service.log(None, "team", "final_flag_requested", "team", team.id, metadata=team.name)
+        db.session.commit()
+        notify_mod("final_flag_requested")
+
+    if confirmation.confirmed_at is None:
+        return jsonify({"status": "pending"})
+
+    try:
+        flag = _reconstruct_final_flag(team, required_mission_ids)
+    except FinalFlagReconstructionError as exc:
+        return jsonify({"error": str(exc)}), exc.status_code
+    return jsonify({"status": "confirmed", "flag": flag})
+
+
+@missions_bp.route("/final-flag/status")
+@team_required
+def final_flag_status():
+    # Lightweight poll target for a team waiting on Game Master confirmation — avoids re-POSTing
+    # (and re-validating) the same already-accepted fragments on every refresh while pending.
+    team = current_team()
+    confirmation = FinalFlagConfirmation.query.filter_by(team_id=team.id).first()
+    if confirmation is None:
+        return jsonify({"status": "none"})
+    if confirmation.confirmed_at is None:
+        return jsonify({"status": "pending"})
+    required_mission_ids = current_app.config.get("FINAL_FLAG_MISSION_IDS") or []
+    try:
+        flag = _reconstruct_final_flag(team, required_mission_ids)
+    except FinalFlagReconstructionError as exc:
+        return jsonify({"error": str(exc)}), exc.status_code
+    return jsonify({"status": "confirmed", "flag": flag})
+
+
+class FinalFlagReconstructionError(Exception):
+    def __init__(self, message, status_code):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _reconstruct_final_flag(team, required_mission_ids):
     ciphertext = current_app.config.get("FINAL_FLAG_CIPHERTEXT")
     service = FinalFlagService(current_app.config["EVENT_SALT"], ciphertext)
     flag = service.reconstruct(required_mission_ids)
@@ -587,9 +667,8 @@ def final_flag():
                 team.name,
                 required_mission_ids,
             )
-            return jsonify({"error": "Final flag could not be verified — notify a Game Master."}), 500
-        return jsonify({"error": "Final flag is not configured for this event yet."}), 404
-
+            raise FinalFlagReconstructionError("Final flag could not be verified — notify a Game Master.", 500)
+        raise FinalFlagReconstructionError("Final flag is not configured for this event yet.", 404)
     audit_service.log(None, "team", "final_flag_reconstructed", "team", team.id, metadata=team.name)
     db.session.commit()
-    return jsonify({"flag": flag})
+    return flag

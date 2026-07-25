@@ -166,3 +166,89 @@ def test_uploading_an_evidence_asset_is_audit_logged(client, app, two_agents):
         logged = EventLog.query.filter_by(action="asset_uploaded").first()
         assert logged is not None
         assert logged.event_metadata == "server.log"
+
+
+# 1x1 transparent PNG, real magic bytes -- smallest valid PNG that will pass signature sniffing.
+_PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"
+    b"\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def _upload_file(client, mission_id, label, filename, raw_bytes):
+    import io
+
+    return client.post(
+        f"/agent/missions/{mission_id}/assets",
+        data={"label": label, "file": (io.BytesIO(raw_bytes), filename)},
+        content_type="multipart/form-data",
+    )
+
+
+def test_uploading_a_real_image_file_stores_binary_and_is_downloadable(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+
+    res = _upload_file(client, mission_id, "Crash screenshot", "crash.png", _PNG_BYTES)
+    assert res.status_code == 201
+    body = res.get_json()
+    assert body["has_binary"] is True
+    assert body["mime_type"] == "image/png"
+    assert body["content"] == ""
+
+    download = client.get(f"/agent/assets/{body['id']}/download")
+    assert download.status_code == 200
+    assert download.data == _PNG_BYTES
+    assert download.headers["Content-Type"] == "image/png"
+
+
+def test_uploading_an_oversized_file_is_rejected(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+
+    from app.blueprints.agent import MAX_ASSET_BYTES
+
+    oversized = _PNG_BYTES[:8] + b"\x00" * (MAX_ASSET_BYTES + 1)
+    res = _upload_file(client, mission_id, "Too big", "huge.png", oversized)
+    assert res.status_code in (400, 413)
+
+
+def test_uploading_a_file_whose_bytes_dont_match_its_extension_is_rejected(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+
+    res = _upload_file(client, mission_id, "Fake png", "fake.png", b"this is not a png")
+    assert res.status_code == 400
+    assert "error" in res.get_json()
+
+
+def test_uploading_a_disallowed_extension_is_rejected(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+
+    res = _upload_file(client, mission_id, "Script", "payload.exe", b"MZ\x90\x00")
+    assert res.status_code == 400
+
+
+def test_download_asset_404s_for_non_owned_asset(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    res = _upload_file(client, mission_id, "Crash screenshot", "crash.png", _PNG_BYTES)
+    asset_id = res.get_json()["id"]
+
+    client.post("/auth/logout")
+    login(client, "agent-b@test.local")
+    assert client.get(f"/agent/assets/{asset_id}/download").status_code == 404
+
+
+def test_existing_text_mode_asset_reports_no_binary(client, app, two_agents):
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    res = client.post(
+        f"/agent/missions/{mission_id}/assets",
+        json={"label": "server.log", "file_type": "log", "content": "connection refused"},
+    )
+    body = res.get_json()
+    assert body["has_binary"] is False
+    assert body["mime_type"] is None
+    assert body["content"] == "connection refused"
