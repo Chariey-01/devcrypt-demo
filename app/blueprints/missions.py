@@ -434,6 +434,8 @@ def submit_challenge():
 def request_hint():
     team = current_team()
     state = event_service.get_state()
+    if state.status != "running":
+        return jsonify({"error": "Event is not currently running."}), 409
     if team.hints_used >= state.hint_limit:
         return jsonify({"error": "No hints remaining for this event."}), 403
 

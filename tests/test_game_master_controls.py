@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import EventState, Mission, Team, TeamMember, TeamMission, User
+from app.models import Challenge, EventState, Mission, Team, TeamMember, TeamMission, User
 
 
 def _login_gm(client, app):
@@ -43,9 +43,45 @@ def test_event_lifecycle_transitions_drive_actual_state(client, app):
 def test_event_lifecycle_routes_require_game_master(client, app):
     for path in ("/mod/event/publish", "/mod/event/start", "/mod/event/pause", "/mod/event/end", "/mod/event/archive"):
         assert client.post(path).status_code in (302, 401, 403)
-        with app.app_context():
-            # Never actually transitioned without auth.
-            assert EventState.query.get(1) is None or EventState.query.get(1).status == "draft"
+    with app.app_context():
+        # Never actually transitioned without auth.
+        assert EventState.query.get(1) is None or EventState.query.get(1).status == "draft"
+
+
+def test_pausing_the_event_blocks_hint_requests_and_resuming_restores_them(client, app):
+    # Regression test: request_hint() previously had no event.status gate at all, unlike the
+    # other three scoring-affecting player actions (submit, run-tests, soft-lock, KC-answer) --
+    # a team could still burn hint budget / take the score penalty while a Game Master had the
+    # event explicitly paused (e.g. for an announcement or a technical hold).
+    _login_gm(client, app)
+    client.post("/mod/event/publish")
+    client.post("/mod/event/start")
+
+    with app.app_context():
+        team = Team(name="Pause Test Squad", score=10, integrity=100)
+        team.set_key("PAUSE01")
+        db.session.add(team)
+        mission = Mission(
+            title="Pause Test Booth", type="code", narrative="x", cipher_word="X",
+            booth_id=1, order_index=1, status="published",
+        )
+        db.session.add(mission)
+        db.session.commit()
+        db.session.add(Challenge(mission_id=mission.id, type="code", prompt="p", grading_mode="auto"))
+        db.session.commit()
+
+    player = app.test_client()
+    player.post("/auth/team-login", data={"name": "Pause Test Squad", "key": "PAUSE01"})
+
+    client.post("/mod/event/pause")
+    res = player.post("/missions/hint")
+    assert res.status_code == 409
+    assert "not currently running" in res.get_json()["error"]
+
+    client.post("/mod/event/start")
+    res = player.post("/missions/hint")
+    assert res.status_code == 200
+    assert "hint" in res.get_json()
 
 
 def test_broadcast_reaches_the_player_status_payload(client, app):

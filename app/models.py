@@ -230,7 +230,13 @@ class CodeSubmission(db.Model):
     results_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    team_mission = db.relationship("TeamMission", backref="code_submissions")
+    # Explicit cascade -- without it, deleting a TeamMission (e.g. via Mission delete cascading
+    # down, DELETE /agent/missions/<id>) hits a NOT NULL FK violation on any CodeSubmission row
+    # still pointing at it instead of being deleted along with it. TeamKnowledgeAnswer below gets
+    # this right already; this relationship was the one admin_reset_service.py had to work around
+    # with a manual bulk-delete for the team-reset path specifically -- this fixes it at the
+    # source so every delete path (not just team-reset) is safe.
+    team_mission = db.relationship("TeamMission", backref=db.backref("code_submissions", cascade="all, delete-orphan"))
 
 
 class TeamMission(db.Model):

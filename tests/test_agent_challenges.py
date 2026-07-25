@@ -241,6 +241,48 @@ def test_download_asset_404s_for_non_owned_asset(client, app, two_agents):
     assert client.get(f"/agent/assets/{asset_id}/download").status_code == 404
 
 
+def test_deleting_a_mission_with_a_code_submission_does_not_crash(client, app, two_agents):
+    # Reproduces a real bug: CodeSubmission had no delete cascade from TeamMission, so deleting a
+    # Mission with any recorded submission (Run Visible Tests or Submit) hit a NOT NULL FK
+    # violation instead of a clean delete. admin_reset_service.py worked around this for the
+    # team-reset path specifically with a manual bulk-delete; this proves the general DELETE
+    # /agent/missions/<id> path (unprotected by that workaround) is now fixed at the model level.
+    from app.extensions import db
+    from app.models import Challenge, CodeSubmission, Mission, Team, TeamMission
+
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    client.put(f"/agent/missions/{mission_id}/challenge", json={"prompt": "Double it."})
+
+    with app.app_context():
+        team = Team(name="Crash Test Squad", score=0, integrity=100)
+        team.set_key("CRASH01")
+        db.session.add(team)
+        db.session.commit()
+        team_mission = TeamMission(team_id=team.id, mission_id=mission_id, status="in_progress")
+        db.session.add(team_mission)
+        db.session.commit()
+        db.session.add(
+            CodeSubmission(
+                team_mission_id=team_mission.id,
+                code="print(1)",
+                mode="run_visible",
+                total_tests=1,
+                passed_tests=1,
+                percent_score=100,
+                passed=True,
+            )
+        )
+        db.session.commit()
+
+    res = client.delete(f"/agent/missions/{mission_id}")
+    assert res.status_code == 200, res.get_json()
+
+    with app.app_context():
+        assert Mission.query.get(mission_id) is None
+        assert CodeSubmission.query.count() == 0
+
+
 def test_existing_text_mode_asset_reports_no_binary(client, app, two_agents):
     login(client, "agent-a@test.local")
     mission_id = _create_mission(client)
