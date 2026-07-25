@@ -511,6 +511,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function attachKnowledgeCheckHandlers(panel) {
+    panel.querySelectorAll(".knowledge-option").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        panel.querySelectorAll(".knowledge-option").forEach((b) => (b.disabled = true));
+        const res = await api(`/missions/knowledge-check/${btn.dataset.knowledge}/answer`, {
+          method: "POST",
+          body: JSON.stringify({ option_id: parseInt(btn.dataset.option, 10) }),
+        });
+        showMessage(res.data.message || res.data.error);
+        await refresh();
+      });
+    });
+  }
+
   function attachChallengeHandlers(panel) {
     panel.querySelectorAll(".challenge-option").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -973,8 +987,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("code-editor-mount")) {
       mountCodeEditor(mission, mission.challenge, currentTeamName);
     } else if (monacoEditor) {
-      // No code editor in this render (e.g. mission has no auto-graded challenge) — free it
-      // rather than leave a detached instance running.
+      // No code editor in this render (e.g. mission has no auto-graded challenge, or the
+      // Knowledge Check isn't complete yet) — free it rather than leave a detached instance running.
       monacoEditor.dispose();
       monacoEditor = null;
       monacoEditorMissionId = null;
@@ -987,6 +1001,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
+    attachKnowledgeCheckHandlers(panel);
     attachChallengeHandlers(panel);
   }
 

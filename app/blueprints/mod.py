@@ -265,6 +265,38 @@ def set_starting_booth(team_id):
     return jsonify({"ok": True, "starting_mission_id": team.starting_mission_id})
 
 
+@mod_bp.route("/teams/distribute-booths", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def distribute_booths():
+    # Round-robin over published missions ordered by order_index, teams ordered by id (their
+    # creation order) — the simplest reliable algorithm that satisfies "distribute evenly,
+    # minimise two teams starting at the same booth": team i gets missions[i % booth_count],
+    # so consecutive teams always land on different booths and every booth gets either
+    # floor(team_count/booth_count) or one more teams assigned as a starting point. This is a
+    # one-time initial-assignment tool (run once before the event starts, or again to
+    # reshuffle) — it does not track live queue/occupancy state, since that would need a
+    # different mechanism (booth check-in) this event doesn't have yet.
+    teams = Team.query.order_by(Team.id).all()
+    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    if not teams or not missions:
+        return jsonify({"error": "Need at least one team and one published booth."}), 400
+
+    assignments = {}
+    for i, team in enumerate(teams):
+        mission = missions[i % len(missions)]
+        team.starting_mission_id = mission.id
+        assignments[team.id] = {"team": team.name, "starting_mission_id": mission.id, "booth": mission.title}
+
+    audit_service.log(
+        current_user, "game_master", "booths_distributed",
+        metadata=f"{len(teams)} teams across {len(missions)} booths",
+    )
+    db.session.commit()
+    notify_mod("booths_distributed")
+    return jsonify({"ok": True, "assignments": list(assignments.values())})
+
+
 @mod_bp.route("/credentials/generate", methods=["POST"])
 @login_required
 @roles_required("game_master")

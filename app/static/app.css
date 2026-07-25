@@ -1163,7 +1163,7 @@ button:disabled {
   position: relative;
 }
 
-.challenge-option {
+.challenge-option, .knowledge-option {
   display: block;
   width: 100%;
   text-align: left;
@@ -1178,23 +1178,23 @@ button:disabled {
   padding: 0.65rem 0.9rem;
 }
 
-.challenge-option:hover:not(:disabled) {
+.challenge-option:hover:not(:disabled), .knowledge-option:hover:not(:disabled) {
   border-color: var(--accent);
   box-shadow: none;
   filter: none;
 }
 
-.challenge-option.correct {
+.challenge-option.correct, .knowledge-option.correct {
   border-color: var(--green);
   color: var(--green);
 }
 
-.challenge-option.incorrect {
+.challenge-option.incorrect, .knowledge-option.incorrect {
   border-color: var(--red);
   color: var(--red);
 }
 
-.challenge-option:disabled {
+.challenge-option:disabled, .knowledge-option:disabled {
   cursor: default;
   opacity: 0.85;
 }

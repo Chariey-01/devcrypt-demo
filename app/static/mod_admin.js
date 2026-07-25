@@ -118,6 +118,7 @@
         <button type="submit">${icon("key", 13)} Generate + QR</button>
       </form>
       <button type="button" class="danger" id="reset-all-teams-btn" style="margin-bottom:1rem;">${icon("rotate-ccw", 13)} Reset ALL Teams (clears every team's progress + activity log)</button>
+      <button type="button" class="ghost" id="distribute-booths-btn" style="margin-bottom:1rem;">${icon("crosshair", 13)} Distribute Teams Across Booths (round-robin starting assignment)</button>
       ${teamRows}
     `;
 
@@ -171,6 +172,22 @@
         await api("DELETE", `/mod/team/${teamId}/member/${memberId}`);
         await loadAll();
       });
+    });
+
+    document.getElementById("distribute-booths-btn").addEventListener("click", async () => {
+      if (
+        !confirm(
+          "Distribute every team evenly across all published booths as their starting assignment? This overwrites any starting booth already set."
+        )
+      )
+        return;
+      try {
+        const result = await api("POST", "/mod/teams/distribute-booths");
+        await loadAll();
+        flash(`Distributed ${result.assignments.length} team(s) across booths.`);
+      } catch (err) {
+        flash(err.message);
+      }
     });
 
     document.getElementById("reset-all-teams-btn").addEventListener("click", async () => {
