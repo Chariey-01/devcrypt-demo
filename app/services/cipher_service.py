@@ -37,13 +37,20 @@ class CipherService:
             return revealed
         word_len = len(mission.cipher_word)
         if word_len:
+            # Position *within this team's assigned Knowledge Check subset* (not the question's
+            # raw order_index in the full booth question bank) — a booth's bank can be much
+            # larger than the handful of questions any one team is actually asked (see
+            # MissionService.assign_knowledge_subset), so the raw order_index could land
+            # anywhere in a wide, sparse range. Position-in-subset always starts every team at
+            # index 0 and counts up, giving a consistent, predictable reveal pattern regardless
+            # of which questions that team happened to draw. Modulo, not a direct index, since a
+            # booth's subset size and its cipher word length are independently configured, so
+            # this never throws even if the pool is smaller/larger than the word.
+            pool_order = team_mission.assigned_question_ids()
             for answer in team_mission.knowledge_answers:
                 if answer.is_correct:
-                    # Modulo, not a direct index — a booth's Knowledge Check question count
-                    # and its cipher word length are independently configured (unlike the old
-                    # removed MCQ system, which assumed they matched 1:1), so this never
-                    # throws even if an Agent adds more questions than letters.
-                    revealed.add(answer.question.order_index % word_len)
+                    position = pool_order.index(answer.question_id) if answer.question_id in pool_order else answer.question.order_index
+                    revealed.add(position % word_len)
         if team_mission.status in ("passed", "overridden"):
             revealed.update(range(word_len))
         return revealed

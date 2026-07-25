@@ -536,12 +536,22 @@ def seed_demo():
 
         db.session.commit()
 
+        # Replace the placeholder Knowledge Check questions just seeded above with the real,
+        # professional-quality bank (app/knowledge_bank.py) -- keeps `python3 scripts/seed.py`
+        # alone sufficient for a correct local setup, instead of requiring a second manual step
+        # that's easy to forget (see scripts/sync_knowledge_bank.py for the standalone version,
+        # used to re-sync after editing the bank without a full reseed).
+        from sync_knowledge_bank import sync_knowledge_bank
+
+        booths_synced, questions_created = sync_knowledge_bank(quiet=True)
+
         print("Seeded 2 teams, 6 employer-themed booths, and 4 staff accounts:")
         print("  Team login   — Alpha Squad / ALPHA01, Bravo Squad / BRAVO01")
         print("  Game Master  — gm@devcrypt.local / changeme")
         print("  Booth Agents — agent1@devcrypt.local, agent2@devcrypt.local / changeme")
         print("  Security     — officer@devcrypt.local / changeme")
         print("  Booths       — " + ", ".join(m["title"] for m in MISSIONS))
+        print(f"  Knowledge Check — {questions_created} questions synced across {booths_synced} booths (app/knowledge_bank.py)")
 
 
 if __name__ == "__main__":

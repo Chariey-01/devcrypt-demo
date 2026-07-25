@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from flask_login import UserMixin
@@ -269,6 +270,17 @@ class TeamMission(db.Model):
     submission_status = db.Column(db.String(20), nullable=True)  # "on_time" | "overtime"
     grading_status = db.Column(db.String(20), nullable=True)  # "pending_review" | "graded"
 
+    # JSON-encoded list of KnowledgeQuestion ids, chosen once (randomly, from that booth's full
+    # question bank) the first time this team reaches this mission, in the fixed order they're
+    # presented/revealed. Nullable -- assigned lazily by MissionService.assign_knowledge_subset,
+    # never recomputed afterward, so reloading the page never reshuffles mid-booth.
+    knowledge_question_pool = db.Column(db.Text, nullable=True)
+
+    def assigned_question_ids(self):
+        if not self.knowledge_question_pool:
+            return []
+        return json.loads(self.knowledge_question_pool)
+
     knowledge_answers = db.relationship(
         "TeamKnowledgeAnswer", backref="team_mission", cascade="all, delete-orphan"
     )
@@ -286,8 +298,12 @@ class TeamKnowledgeAnswer(db.Model):
     is_correct = db.Column(db.Boolean, default=False)
     answered_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    question = db.relationship("KnowledgeQuestion")
-    selected_option = db.relationship("KnowledgeOption")
+    # Explicit cascades on both FKs -- without them, deleting a KnowledgeQuestion (or its
+    # options, which already cascade from the question) hits the same class of NOT NULL FK
+    # violation fixed for CodeSubmission/TeamMission above, the moment any team has answered
+    # it. Needed for scripts/sync_knowledge_bank.py, which replaces a booth's question set.
+    question = db.relationship("KnowledgeQuestion", backref=db.backref("team_answers", cascade="all, delete-orphan"))
+    selected_option = db.relationship("KnowledgeOption", backref=db.backref("team_answers", cascade="all, delete-orphan"))
 
 
 class Fragment(db.Model):

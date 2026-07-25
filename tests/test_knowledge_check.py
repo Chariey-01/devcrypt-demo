@@ -98,6 +98,21 @@ def _add_question(app, mission_id, correct_text="Phishing"):
         return q.id, correct.id, wrong.id
 
 
+def _add_n_questions(app, mission_id, n):
+    with app.app_context():
+        ids = []
+        for i in range(n):
+            q = KnowledgeQuestion(mission_id=mission_id, question_text=f"Question {i}?", order_index=i)
+            db.session.add(q)
+            db.session.flush()
+            correct = KnowledgeOption(question_id=q.id, option_text="Right", is_correct=True)
+            wrong = KnowledgeOption(question_id=q.id, option_text="Wrong", is_correct=False)
+            db.session.add_all([correct, wrong])
+            db.session.commit()
+            ids.append(q.id)
+        return ids
+
+
 def test_challenge_stage_is_hidden_until_knowledge_check_answered(client, app):
     mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
     _add_question(app, mission_id)
@@ -187,3 +202,116 @@ def test_correct_answer_reveals_a_cipher_clue_but_real_fragment_still_requires_t
     client.post("/missions/challenge/submit", json={"code": "n = int(input())\nprint(n * 2)\n"})
     status_final = client.get("/missions/status").get_json()
     assert len(status_final["fragments"]) == 1
+
+
+def test_only_a_random_subset_of_five_is_served_from_a_larger_pool(client, app):
+    from app.services.mission_service import KNOWLEDGE_CHECK_POOL_SIZE
+
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    _add_n_questions(app, mission_id, 15)
+    _login_team(client)
+
+    status = client.get("/missions/status").get_json()
+    served = status["mission"]["knowledge_questions"]
+    assert len(served) == KNOWLEDGE_CHECK_POOL_SIZE == 5
+    assert status["mission"]["knowledge_check_complete"] is False
+
+
+def test_assigned_subset_is_stable_across_repeated_polls(client, app):
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    _add_n_questions(app, mission_id, 15)
+    _login_team(client)
+
+    first = client.get("/missions/status").get_json()
+    second = client.get("/missions/status").get_json()
+    first_ids = [q["id"] for q in first["mission"]["knowledge_questions"]]
+    second_ids = [q["id"] for q in second["mission"]["knowledge_questions"]]
+    assert first_ids == second_ids  # same 5, same order -- never reshuffled mid-booth
+
+
+def test_booth_with_fewer_questions_than_pool_size_serves_all_of_them(client, app):
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    _add_n_questions(app, mission_id, 3)  # fewer than the pool size of 5
+    _login_team(client)
+
+    status = client.get("/missions/status").get_json()
+    assert len(status["mission"]["knowledge_questions"]) == 3
+
+
+def test_cipher_reveal_uses_position_within_assigned_subset_not_raw_order_index(client, app):
+    # A question's raw order_index in a 15-question pool could be far outside the cipher
+    # word's length; the reveal must be based on where it sits in *this team's* 5-question
+    # subset (0..4), not that raw index, or the modulo would land unpredictably.
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    _add_n_questions(app, mission_id, 15)
+    _login_team(client)
+
+    status = client.get("/missions/status").get_json()
+    assigned = status["mission"]["knowledge_questions"]
+    second_question_id = assigned[1]["id"]  # position 1 in the assigned subset
+    with app.app_context():
+        from app.models import KnowledgeOption
+
+        correct_option_id = (
+            KnowledgeOption.query.filter_by(question_id=second_question_id, is_correct=True).first().id
+        )
+
+    client.post(f"/missions/knowledge-check/{second_question_id}/answer", json={"option_id": correct_option_id})
+
+    status_after = client.get("/missions/status").get_json()
+    revealed = status_after["cryptogram"][0]["revealed"]
+    # "CYBER" (mission's cipher_word, 5 letters) -- position 1 in the subset should reveal
+    # index 1 % 5 == 1, regardless of that question's real order_index (which could be anywhere
+    # in 0..14).
+    assert revealed[1] is True
+    assert sum(revealed) == 1
+
+
+def test_replacing_a_booths_questions_reassigns_a_fresh_subset_instead_of_going_empty(client, app):
+    # Regression test for the exact failure mode scripts/sync_knowledge_bank.py can trigger if
+    # run mid-event: a team already has a stored subset, then every KnowledgeQuestion for that
+    # booth gets deleted and recreated (fresh ids). Falling back to an empty list would make
+    # knowledge_check_complete trivially true (0 answers >= 0 questions) and skip the Knowledge
+    # Check entirely -- assign_knowledge_subset must instead notice none of the stored ids
+    # still exist and assign a fresh subset.
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    _add_n_questions(app, mission_id, 15)
+    _login_team(client)
+
+    first = client.get("/missions/status").get_json()
+    assert len(first["mission"]["knowledge_questions"]) == 5
+
+    with app.app_context():
+        mission = Mission.query.get(mission_id)
+        for q in list(mission.knowledge_questions):
+            db.session.delete(q)
+        db.session.commit()
+        new_ids = _add_n_questions(app, mission_id, 15)
+
+    second = client.get("/missions/status").get_json()
+    served = second["mission"]["knowledge_questions"]
+    assert len(served) == 5  # not 0
+    assert second["mission"]["knowledge_check_complete"] is False
+    assert all(q["id"] in new_ids for q in served)
+
+
+def test_deleting_a_knowledge_question_with_a_recorded_answer_does_not_crash(client, app):
+    # Regression test: TeamKnowledgeAnswer had no delete cascade from KnowledgeQuestion or
+    # KnowledgeOption, so deleting a question a team had already answered hit a NOT NULL FK
+    # violation -- the same bug class fixed for CodeSubmission/TeamMission, found while writing
+    # scripts/sync_knowledge_bank.py (which needs to delete-and-replace a booth's questions).
+    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
+    question_id, correct_id, wrong_id = _add_question(app, mission_id)
+    _login_team(client)
+
+    client.post(f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id})
+
+    with app.app_context():
+        from app.models import KnowledgeQuestion, TeamKnowledgeAnswer
+
+        question = KnowledgeQuestion.query.get(question_id)
+        db.session.delete(question)
+        db.session.commit()  # must not raise IntegrityError
+
+        assert KnowledgeQuestion.query.get(question_id) is None
+        assert TeamKnowledgeAnswer.query.filter_by(question_id=question_id).count() == 0

@@ -1,3 +1,5 @@
+import json
+import random
 from datetime import datetime
 
 from flask import current_app
@@ -5,6 +7,8 @@ from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models import Fragment, Mission, TeamMission
+
+KNOWLEDGE_CHECK_POOL_SIZE = 5
 from ..sockets import notify_global, notify_mod, notify_team
 from .audit_service import AuditService
 from .cipher_service import CipherService
@@ -97,6 +101,28 @@ class MissionService:
             db.session.add(team_mission)
             db.session.commit()
         return team_mission
+
+    def assign_knowledge_subset(self, team_mission, mission, pool_size=KNOWLEDGE_CHECK_POOL_SIZE):
+        # Chosen once per team per booth, then persisted -- every later call (a page reload, a
+        # poll tick) returns the exact same questions in the exact same order, never reshuffled
+        # mid-booth. A booth with fewer questions than pool_size just serves all of them.
+        all_questions = mission.knowledge_questions
+        if team_mission.knowledge_question_pool:
+            assigned_ids = team_mission.assigned_question_ids()
+            by_id = {q.id: q for q in all_questions}
+            matched = [by_id[qid] for qid in assigned_ids if qid in by_id]
+            if matched:
+                return matched
+            # None of the stored ids resolve to a real question anymore -- this booth's
+            # questions were replaced (scripts/sync_knowledge_bank.py) after this team was
+            # already assigned a subset. Falling through to reassign fresh rather than silently
+            # returning an empty list, which would make knowledge_check_complete trivially true
+            # (0 answers >= 0 questions) and skip the Knowledge Check entirely.
+
+        chosen = random.sample(all_questions, min(pool_size, len(all_questions)))
+        team_mission.knowledge_question_pool = json.dumps([q.id for q in chosen])
+        db.session.commit()
+        return chosen
 
     def complete_mission(
         self, team, team_mission, mission, status, actor=None, actor_role="team", grading_result=None,

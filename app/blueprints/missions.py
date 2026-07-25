@@ -215,11 +215,14 @@ def status():
             if mission.challenge
             else None,
             "pending_review": bool(team_mission.submission_text),
-            "knowledge_questions": [
-                _serialize_knowledge_question(q, team_mission) for q in mission.knowledge_questions
-            ],
-            "knowledge_check_complete": len(team_mission.knowledge_answers) >= len(mission.knowledge_questions),
         }
+        assigned_questions = mission_service.assign_knowledge_subset(team_mission, mission)
+        payload["mission"]["knowledge_questions"] = [
+            _serialize_knowledge_question(q, team_mission) for q in assigned_questions
+        ]
+        payload["mission"]["knowledge_check_complete"] = len(team_mission.knowledge_answers) >= len(
+            assigned_questions
+        )
 
     return jsonify(payload)
 
@@ -253,11 +256,11 @@ def answer_knowledge_question(question_id):
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
 
-    question = next((q for q in mission.knowledge_questions if q.id == question_id), None)
+    team_mission = mission_service.get_or_create_team_mission(team, mission)
+    assigned_questions = mission_service.assign_knowledge_subset(team_mission, mission)
+    question = next((q for q in assigned_questions if q.id == question_id), None)
     if question is None:
         return jsonify({"error": "That question does not belong to your current mission."}), 404
-
-    team_mission = mission_service.get_or_create_team_mission(team, mission)
 
     existing = TeamKnowledgeAnswer.query.filter_by(
         team_mission_id=team_mission.id, question_id=question.id
