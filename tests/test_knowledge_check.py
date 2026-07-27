@@ -49,7 +49,9 @@ def _setup_mission_with_challenge(app):
         return mission.id, team.id, agent.id
 
 
-def test_agent_can_author_a_knowledge_question_via_the_dashboard(client, app):
+def test_agent_cannot_author_knowledge_questions_the_upload_interface_was_removed(client, app):
+    # Product decision: Knowledge Check content is hardcoded in app/knowledge_bank.py and
+    # synced via scripts/sync_knowledge_bank.py, never authored through the Agent Dashboard.
     mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
     _login_agent(client)
 
@@ -63,27 +65,7 @@ def test_agent_can_author_a_knowledge_question_via_the_dashboard(client, app):
             ],
         },
     )
-    assert res.status_code == 201
-    body = res.get_json()
-    assert body["question_text"] == "What attack exploits human psychology?"
-    assert len(body["options"]) == 2
-
-
-def test_creating_a_question_requires_exactly_one_correct_option(client, app):
-    mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
-    _login_agent(client)
-
-    res = client.post(
-        f"/agent/missions/{mission_id}/knowledge-questions",
-        json={
-            "question_text": "Q?",
-            "options": [
-                {"option_text": "A", "is_correct": True},
-                {"option_text": "B", "is_correct": True},
-            ],
-        },
-    )
-    assert res.status_code == 400
+    assert res.status_code == 404
 
 
 def _add_question(app, mission_id, correct_text="Phishing"):

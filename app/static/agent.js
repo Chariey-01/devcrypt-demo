@@ -225,7 +225,6 @@
     const tabs = [
       ["challenge", "Challenge"],
       ["tests", "Test Suite"],
-      ["knowledge", "Knowledge Check"],
       ["hints", "Hints"],
       ["assets", "Files"],
       ["preview", "Preview"],
@@ -296,7 +295,6 @@
     const content = document.getElementById("agent-tab-content");
     if (activeTab === "challenge") renderChallengeTab(content);
     else if (activeTab === "tests") renderTestsTab(content);
-    else if (activeTab === "knowledge") renderKnowledgeTab(content);
     else if (activeTab === "hints") renderHintsTab(content);
     else if (activeTab === "assets") renderAssetsTab(content);
     else if (activeTab === "preview") renderPreviewTab(content);
@@ -505,68 +503,6 @@
         else await api("POST", `/agent/missions/${selected.id}/testcases`, body);
         await refreshSelected();
         flash("Test case saved.");
-      } catch (err) {
-        flash(err.message);
-      }
-    });
-  }
-
-  function renderKnowledgeTab(el) {
-    const rows = (selected.knowledge_questions || [])
-      .map(
-        (q) => `
-      <div class="card" style="margin-bottom:0.5rem;">
-        <p>${escapeHtml(q.question_text)}</p>
-        <ul>
-          ${q.options
-            .map(
-              (o) =>
-                `<li>${escapeHtml(o.option_text)}${o.is_correct ? ` <span class="badge badge-passed">correct</span>` : ""}</li>`
-            )
-            .join("")}
-        </ul>
-        <button type="button" class="danger" data-remove-question="${q.id}">${icon("x", 12)} Remove</button>
-      </div>`
-      )
-      .join("");
-    const optionRows = [0, 1, 2, 3]
-      .map(
-        (i) => `
-      <div style="display:flex;gap:0.4rem;align-items:center;">
-        <input type="radio" name="correct" value="${i}" ${i === 0 ? "checked" : ""} style="width:auto;">
-        <input type="text" name="option_${i}" placeholder="Option ${i + 1}${i < 2 ? " (required)" : " (optional)"}" ${i < 2 ? "required" : ""}>
-      </div>`
-      )
-      .join("");
-    el.innerHTML = `
-      <p class="hint-text">${icon("radar", 13)} General knowledge trivia for this booth's discipline —
-        unrelated to the coding problem. Correct answers reveal a cipher clue, not the mission fragment.</p>
-      ${rows || `<p class="hint-text">No Knowledge Check questions configured yet.</p>`}
-      <form id="knowledge-form" class="auth-form">
-        <textarea name="question_text" rows="2" placeholder="Question text" required></textarea>
-        ${optionRows}
-        <button type="submit">${icon("zap", 13)} Add Question</button>
-      </form>
-    `;
-    el.querySelectorAll("[data-remove-question]").forEach((btn) =>
-      btn.addEventListener("click", async () => {
-        await api("DELETE", `/agent/knowledge-questions/${btn.dataset.removeQuestion}`);
-        await refreshSelected();
-      })
-    );
-    document.getElementById("knowledge-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const correctIndex = Number(fd.get("correct"));
-      const options = [0, 1, 2, 3]
-        .map((i) => ({ option_text: (fd.get(`option_${i}`) || "").trim(), is_correct: i === correctIndex }))
-        .filter((o) => o.option_text);
-      try {
-        await api("POST", `/agent/missions/${selected.id}/knowledge-questions`, {
-          question_text: fd.get("question_text"),
-          options,
-        });
-        await refreshSelected();
       } catch (err) {
         flash(err.message);
       }

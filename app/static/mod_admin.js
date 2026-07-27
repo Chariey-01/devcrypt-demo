@@ -267,6 +267,7 @@
   }
 
   let agentSearchQuery = "";
+  let lastAgentCredential = null;
 
   function fmtLastLogin(iso) {
     if (!iso) return "Never logged in";
@@ -319,9 +320,46 @@
         </div>`;
       })
       .join("");
-    el.innerHTML =
-      rows ||
-      `<p class="hint-text">${agents.length ? "No booth agents match that search." : "No booth agents on file yet."}</p>`;
+    el.innerHTML = `
+      ${
+        lastAgentCredential
+          ? `<div class="card" style="margin-bottom:0.75rem;">
+              <p>${icon("key", 13)} <strong>${escapeHtml(lastAgentCredential.login)}</strong> — password shown once: <code>${escapeHtml(lastAgentCredential.secret)}</code></p>
+              ${lastAgentCredential.qr_data_uri ? `<img src="${lastAgentCredential.qr_data_uri}" alt="QR code" width="140" height="140">` : ""}
+            </div>`
+          : ""
+      }
+      <form id="create-agent-form" class="auth-form" style="margin-bottom:0.75rem;">
+        <input type="email" name="email" placeholder="New agent's email" required style="width:auto;">
+        <input type="text" name="full_name" placeholder="Full name (optional)" style="width:auto;">
+        <button type="submit">${icon("zap", 13)} Create Booth Agent</button>
+      </form>
+      ${rows || `<p class="hint-text">${agents.length ? "No booth agents match that search." : "No booth agents on file yet."}</p>`}
+    `;
+
+    document.getElementById("create-agent-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      try {
+        await withLoadingButton(submitBtn, "Creating&hellip;", async () => {
+          lastAgentCredential = await api("POST", "/mod/credentials/generate", {
+            kind: "booth_agent",
+            name: fd.get("email"),
+            full_name: fd.get("full_name"),
+          });
+        });
+        clearTimeout(renderAgentOverview._clearCredentialTimer);
+        renderAgentOverview._clearCredentialTimer = setTimeout(() => {
+          lastAgentCredential = null;
+          renderAgentOverview();
+        }, 20000);
+        await loadAll();
+        flash("Booth Agent created.");
+      } catch (err) {
+        flash(err.message);
+      }
+    });
 
     el.querySelectorAll("[data-assign-agent]").forEach((form) => {
       form.addEventListener("submit", async (e) => {

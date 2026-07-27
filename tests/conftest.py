@@ -11,6 +11,12 @@ class TestConfig(Config):
     SQLALCHEMY_ENGINE_OPTIONS = engine_options_for(SQLALCHEMY_DATABASE_URI)
     SECRET_KEY = "test-secret"
     EVENT_SALT = "test-salt"
+    # Explicitly unset regardless of the developer's local .env -- Config.FINAL_FLAG_CIPHERTEXT/
+    # FINAL_FLAG_MISSION_IDS are read from os.getenv() at class-body time, so without this
+    # override, a developer's local final-flag QA setup would silently leak into every test run
+    # (see test_final_flag_not_configured_returns_404, which specifically asserts the unset case).
+    FINAL_FLAG_CIPHERTEXT = None
+    FINAL_FLAG_MISSION_IDS = []
 
 
 @pytest.fixture

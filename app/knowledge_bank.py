@@ -10,10 +10,15 @@ served, answered, or cipher-revealed cares whether a question's content originat
 from the Agent Dashboard -- this file only changes *how the content got into the database*,
 not the runtime path.
 
-Each booth's pool is intentionally larger (15) than what any one team is actually asked (5,
-picked randomly per team -- see MissionService.assign_knowledge_subset) -- this adds variety
-between teams and reduces the value of one team calling out answers to a team at another
-booth.
+Each booth's pool is intentionally larger (15-18) than what any one team is actually asked (5,
+picked randomly per team, one per distinct category where possible -- see
+MissionService.assign_knowledge_subset) -- this adds variety between teams and reduces the
+value of one team calling out answers to a team at another booth.
+
+Every question is tagged with one of the 10 discipline categories in CATEGORIES below.
+assign_knowledge_subset() uses this tag to draw a category-diverse 5-question hand per booth
+(one per category, cycling if a booth has fewer than 5 distinct categories in its pool)
+instead of a flat random sample that could hand a team five near-identical questions.
 
 `explanation` is for maintainers only -- never sent to the player-facing API.
 
@@ -24,6 +29,19 @@ from the database either way.
 """
 from dataclasses import dataclass
 
+CATEGORIES = (
+    "Cybersecurity",
+    "Software Engineering",
+    "Data Science",
+    "AI/ML",
+    "DevOps",
+    "Git",
+    "Networking",
+    "APIs",
+    "Databases",
+    "Testing",
+)
+
 
 @dataclass(frozen=True)
 class BankQuestion:
@@ -31,7 +49,12 @@ class BankQuestion:
     text: str
     options: tuple  # exactly 4 option strings
     correct_index: int  # 0-3
+    category: str  # one of CATEGORIES above, used for balanced sampling
     explanation: str  # internal only, not shown to players
+
+    def __post_init__(self):
+        if self.category not in CATEGORIES:
+            raise ValueError(f"{self.key!r} has unknown category {self.category!r}")
 
 
 # Keyed by Mission.booth_id (1-6), matching scripts/seed.py's booth numbering.
@@ -40,6 +63,7 @@ BOOTH_QUESTION_BANKS = {
     1: [
         BankQuestion(
             key="elewa-01",
+            category="Software Engineering",
             text=(
                 "A product team ships a new onboarding flow behind a feature flag, rolled out "
                 "to 5% of users. Conversion drops sharply for that 5%, but the team can't tell "
@@ -56,6 +80,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-02",
+            category="Git",
             text=(
                 "Two engineers each branch off main to build unrelated features and both edit "
                 "the same config file in different places. When the second branch tries to "
@@ -72,6 +97,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-03",
+            category="Software Engineering",
             text=(
                 "A startup's MVP needs to validate demand before investing in a scalable "
                 "architecture. Which approach best reflects the actual purpose of an MVP?"
@@ -87,6 +113,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-04",
+            category="DevOps",
             text=(
                 "A deploy pipeline starts failing after a new dependency is added. Existing "
                 "services keep running fine, but freshly deployed containers fail on startup "
@@ -104,6 +131,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-05",
+            category="Software Engineering",
             text=(
                 "A team wants to reduce the time between writing code and getting user feedback "
                 "on it. Which practice most directly supports that Agile goal?"
@@ -119,6 +147,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-06",
+            category="Software Engineering",
             text=(
                 "An API returns HTTP 500 intermittently under load, but works fine in local "
                 "testing. Which is the most likely class of bug to investigate first?"
@@ -134,6 +163,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-07",
+            category="Testing",
             text=(
                 "A code review flags a pull request for having zero automated tests on a "
                 "critical payment path. The author argues it works because they tested it "
@@ -150,6 +180,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-08",
+            category="Data Science",
             text=(
                 "A product manager wants a single number to know if last week's release "
                 "improved user retention. Which is the most meaningful way to evaluate that?"
@@ -165,6 +196,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-09",
+            category="APIs",
             text=(
                 "In a REST API, which HTTP method is expected to be idempotent -- calling it "
                 "multiple times with the same input produces the same end state as calling it once?"
@@ -180,6 +212,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-10",
+            category="Software Engineering",
             text=(
                 "A junior engineer wants to skip writing a README because 'the code is "
                 "self-explanatory.' What's the strongest reason documentation still matters here?"
@@ -195,6 +228,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-11",
+            category="Software Engineering",
             text=(
                 "A team debates between a monolith and microservices for a brand-new product "
                 "with three engineers and no confirmed users yet. What's the strongest argument "
@@ -211,6 +245,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-12",
+            category="Testing",
             text=(
                 "A function's unit tests all pass, but a bug still reaches production because "
                 "the tests never exercised how two independently-correct functions behave "
@@ -227,6 +262,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-13",
+            category="Software Engineering",
             text=(
                 "A startup's engineering lead insists every pull request needs at least one "
                 "review before merging, even for a one-line fix. What's the best justification "
@@ -243,6 +279,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-14",
+            category="Databases",
             text=(
                 "An engineering team is choosing a database for a new feature that needs strict "
                 "referential integrity between orders and customers. Which factor matters most "
@@ -259,6 +296,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="elewa-15",
+            category="DevOps",
             text=(
                 "A team's CI pipeline takes 45 minutes to run, so engineers start skipping it "
                 "before merging 'small' changes. What's the healthiest long-term fix?"
@@ -277,6 +315,7 @@ BOOTH_QUESTION_BANKS = {
     2: [
         BankQuestion(
             key="wfa-01",
+            category="Cybersecurity",
             text=(
                 "An HR platform grants a contractor temporary access to payroll data for one "
                 "project. Six months after the project ends, the access is still active. What "
@@ -293,6 +332,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-02",
+            category="Cybersecurity",
             text=(
                 "A workforce platform wants to grant permissions based on whether someone is a "
                 "'Manager,' 'HR Admin,' or 'Employee,' rather than assigning permissions to each "
@@ -309,6 +349,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-03",
+            category="Cybersecurity",
             text=(
                 "A login system only requires a password, and a phishing campaign successfully "
                 "steals several employees' passwords. Which control would have limited the "
@@ -325,6 +366,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-04",
+            category="Cybersecurity",
             text=(
                 "An HR system needs to store employee salary data. Which practice best protects "
                 "that data if the database is ever exfiltrated?"
@@ -340,6 +382,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-05",
+            category="DevOps",
             text=(
                 "A company operating across 40 African markets needs its HR platform available "
                 "even if one data center goes down. Which cloud concept most directly addresses "
@@ -356,6 +399,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-06",
+            category="DevOps",
             text=(
                 "Which of these best describes what \"SaaS\" (Software as a Service) means for "
                 "a company buying an HR platform instead of building one?"
@@ -371,6 +415,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-07",
+            category="Data Science",
             text=(
                 "A dataset of employee records has some rows with the same national ID appearing "
                 "twice, due to a sync bug between two systems. Before running any analysis, what "
@@ -387,6 +432,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-08",
+            category="AI/ML",
             text=(
                 "An HR platform wants to predict which employees are at risk of resigning, "
                 "using historical data on tenure, promotions, and pay changes. What type of "
@@ -403,6 +449,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-09",
+            category="Cybersecurity",
             text=(
                 "A company audits its cloud storage and discovers a bucket containing employee "
                 "personal data is publicly readable by anyone with the URL. What is the most "
@@ -419,6 +466,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-10",
+            category="AI/ML",
             text=(
                 "A recruiter wants to automatically screen resumes using a language model. What "
                 "is the most important risk to evaluate before deploying that system?"
@@ -434,6 +482,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-11",
+            category="Cybersecurity",
             text=(
                 "An HR system logs every login attempt, including failed ones. A security "
                 "analyst notices 500 failed login attempts for one account within a minute. "
@@ -450,6 +499,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-12",
+            category="DevOps",
             text=(
                 "A workforce platform wants to move a legacy on-premise payroll system into the "
                 "cloud with minimal code changes. Which migration strategy best fits that goal?"
@@ -465,6 +515,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-13",
+            category="Cybersecurity",
             text=(
                 "A company wants employee data encrypted both while stored in the database and "
                 "while traveling between the app and the server. Which two concepts together "
@@ -481,6 +532,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-14",
+            category="AI/ML",
             text=(
                 "An analyst building a model to predict attrition includes an employee's "
                 "resignation date as an input feature. What's wrong with this?"
@@ -496,6 +548,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="wfa-15",
+            category="APIs",
             text=(
                 "A workforce management API rate-limits requests per client to 100/minute. A "
                 "partner integration keeps hitting HTTP 429. What does that status code mean?"
@@ -514,6 +567,7 @@ BOOTH_QUESTION_BANKS = {
     3: [
         BankQuestion(
             key="unispot-01",
+            category="Networking",
             text=(
                 "A student applies to five universities through a routing platform. What is "
                 "DNS's role the first time their browser loads that platform's website?"
@@ -529,6 +583,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-02",
+            category="Cybersecurity",
             text=(
                 "A student notices a university application form's URL starts with \"http://\" "
                 "instead of \"https://\" and their advisor tells them to be cautious. Why?"
@@ -544,6 +599,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-03",
+            category="APIs",
             text=(
                 "A university's admissions system and a student-routing platform need to "
                 "exchange application data automatically, without a human copying data between "
@@ -560,6 +616,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-04",
+            category="Software Engineering",
             text=(
                 "A routing platform wants to average the processing time of thousands of "
                 "applications daily without recomputing from scratch every time a new one "
@@ -576,6 +633,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-05",
+            category="Data Science",
             text=(
                 "An advisor wants to know if application processing time differs meaningfully "
                 "between two intake periods, not just by chance. What kind of analysis answers "
@@ -592,6 +650,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-06",
+            category="Cybersecurity",
             text=(
                 "A phishing email impersonates a university's admissions office, asking a "
                 "student to \"verify\" their application by entering their password on a "
@@ -608,6 +667,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-07",
+            category="Cybersecurity",
             text=(
                 "A routing platform's server-side code directly inserts a user-submitted "
                 "university name into a SQL query string. What vulnerability class does this "
@@ -624,6 +684,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-08",
+            category="Databases",
             text=(
                 "Which fix most directly closes the SQL injection risk described in the "
                 "previous scenario?"
@@ -639,6 +700,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-09",
+            category="APIs",
             text=(
                 "A partner university wants real-time updates the instant a new application "
                 "arrives, rather than checking every few minutes. Which approach is best suited "
@@ -655,6 +717,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-10",
+            category="Data Science",
             text=(
                 "A dataset of application processing times has one entry of 400 days, while "
                 "every other entry is under 60 days -- almost certainly a data-entry error. "
@@ -671,6 +734,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-11",
+            category="Networking",
             text=(
                 "A load balancer sits in front of three application servers handling student "
                 "traffic. What is its primary purpose?"
@@ -686,6 +750,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-12",
+            category="Software Engineering",
             text=(
                 "A student's application status page shows stale data because it's cached "
                 "aggressively. What's the tradeoff being made by using a cache here at all?"
@@ -701,6 +766,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-13",
+            category="Data Science",
             text=(
                 "A routing desk wants to know which countries send the most applications, using "
                 "a bar chart grouped by country. Which data preparation step is essential before "
@@ -717,6 +783,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-14",
+            category="AI/ML",
             text=(
                 "An application-review AI assistant is trained mostly on essays from one "
                 "region's writing style and starts scoring other regions' equally strong essays "
@@ -733,6 +800,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="unispot-15",
+            category="Software Engineering",
             text=(
                 "A platform wants to reduce how often students abandon a slow-loading "
                 "application form. Which single change is likely to have the biggest measurable "
@@ -752,6 +820,7 @@ BOOTH_QUESTION_BANKS = {
     4: [
         BankQuestion(
             key="ctg-01",
+            category="Cybersecurity",
             text=(
                 "A company donates old laptops for refurbishment. Simply deleting the files "
                 "before donating isn't considered secure. Why not?"
@@ -767,6 +836,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-02",
+            category="Cybersecurity",
             text=(
                 "Which best describes what a proper \"secure wipe\" does that simple deletion "
                 "does not?"
@@ -782,6 +852,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-03",
+            category="Software Engineering",
             text=(
                 "What best describes \"circular economy\" as applied to electronics refurbishment?"
             ),
@@ -796,6 +867,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-04",
+            category="Software Engineering",
             text=(
                 "Which of the following is generally classified as \"e-waste\"?"
             ),
@@ -810,6 +882,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-05",
+            category="Cybersecurity",
             text=(
                 "A refurbishment hub's inventory tracker shows a device as \"wiped\" but an "
                 "audit later finds recoverable personal data on it. What does this most likely "
@@ -826,6 +899,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-06",
+            category="Cybersecurity",
             text=(
                 "A hard drive uses full-disk encryption. If the drive is later securely wiped "
                 "by simply destroying the encryption key (crypto-erase) instead of overwriting "
@@ -842,6 +916,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-07",
+            category="Cybersecurity",
             text=(
                 "A batch of devices arrives for refurbishment from many different companies. "
                 "What is the biggest data-security risk specific to this stage of the process?"
@@ -857,6 +932,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-08",
+            category="Testing",
             text=(
                 "A tracking system logs \"1\" for a device that still needs a secure wipe. If "
                 "the flag is accidentally flipped to \"0\" by a software bug, what is the "
@@ -873,6 +949,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-09",
+            category="Cybersecurity",
             text=(
                 "Which industry-standard concept describes permanently and verifiably destroying "
                 "data so it meets compliance requirements (e.g. for regulated data like health "
@@ -889,6 +966,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-10",
+            category="Cybersecurity",
             text=(
                 "A refurbishment company wants to prove to auditors, after the fact, exactly "
                 "which employee wiped which device and when. What should the system provide?"
@@ -904,6 +982,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-11",
+            category="Software Engineering",
             text=(
                 "Why might refurbishing and reselling used enterprise hardware be considered "
                 "more sustainable than the buyer purchasing new hardware, from a lifecycle "
@@ -920,6 +999,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-12",
+            category="Software Engineering",
             text=(
                 "A batch of 200 devices needs a status check: how many are unwiped vs. wiped. "
                 "Which is the correct way to compute \"how many entries equal a specific value\" "
@@ -936,6 +1016,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-13",
+            category="Cybersecurity",
             text=(
                 "A device's storage is physically destroyed (shredded) rather than wiped for "
                 "reuse. When is this the more appropriate choice over a secure wipe?"
@@ -951,6 +1032,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-14",
+            category="Cybersecurity",
             text=(
                 "Which of these is the most accurate description of what \"data breach\" means "
                 "in the context of improperly wiped refurbished devices?"
@@ -966,6 +1048,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="ctg-15",
+            category="Data Science",
             text=(
                 "A refurbishment company wants a dashboard showing wipe-completion rate over "
                 "time to catch process regressions early. What is the most useful visualization "
@@ -980,11 +1063,46 @@ BOOTH_QUESTION_BANKS = {
             correct_index=1,
             explanation="Time-series monitoring is the correct answer for 'catch regressions early' -- a real operational-analytics pattern.",
         ),
+        BankQuestion(
+            key="ctg-16",
+            category="Networking",
+            text=(
+                "A refurbishment hub keeps intake devices (still holding a previous owner's data) "
+                "on the same flat network as its already-wiped, ready-to-ship inventory. What's "
+                "the strongest networking-level fix?"
+            ),
+            options=(
+                "Segment the network (e.g. VLANs) so intake devices can't reach the ready-to-ship inventory systems",
+                "Give every device the same static IP to make tracking simpler",
+                "Disable DNS for the intake devices",
+                "There's no networking angle here -- this is purely a software problem",
+            ),
+            correct_index=0,
+            explanation="Network segmentation limiting blast radius between untrusted intake and trusted inventory is the actual infrastructure-level control here.",
+        ),
+        BankQuestion(
+            key="ctg-17",
+            category="Git",
+            text=(
+                "Two technicians both edit the same device-intake tracking script in their own "
+                "branches. Before either can merge into main, what does Git require if they both "
+                "touched the same lines?"
+            ),
+            options=(
+                "Nothing -- Git always keeps both versions automatically",
+                "The conflicting branch must be rebased or merged with main and any conflicting hunks resolved by hand before it can be merged",
+                "The second branch is permanently blocked from ever merging",
+                "Git deletes one technician's branch automatically to resolve it",
+            ),
+            correct_index=1,
+            explanation="Tests the actual mechanics of resolving a real merge conflict, not just recognizing the term.",
+        ),
     ],
     # ---------------------------------------------------------------- Booth 5 -- Zuberi
     5: [
         BankQuestion(
             key="zuberi-01",
+            category="Cybersecurity",
             text=(
                 "A mobile game submits match scores directly from the player's device to update "
                 "the leaderboard, trusting whatever value the client sends. What is the main "
@@ -1001,6 +1119,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-02",
+            category="Cybersecurity",
             text=(
                 "Why do most competitive mobile games validate scores server-side instead of "
                 "trusting the value the client reports?"
@@ -1016,6 +1135,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-03",
+            category="Cybersecurity",
             text=(
                 "A game's input field for a player's username doesn't validate or sanitize what "
                 "is submitted before storing it. What class of risk does this create?"
@@ -1031,6 +1151,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-04",
+            category="Software Engineering",
             text=(
                 "In game development, \"FPS\" most commonly refers to which of the following?"
             ),
@@ -1045,6 +1166,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-05",
+            category="Testing",
             text=(
                 "A mobile game experiences a spike in crashes after a new update, but only on "
                 "one specific Android device model. What's the most effective first debugging "
@@ -1061,6 +1183,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-06",
+            category="DevOps",
             text=(
                 "A leaderboard service goes down under a sudden traffic spike during a "
                 "tournament. Which architectural choice would most directly help it handle "
@@ -1077,6 +1200,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-07",
+            category="Data Science",
             text=(
                 "A game studio wants to know if a new matchmaking algorithm actually reduces "
                 "wait times compared to the old one. What is the most rigorous way to find out?"
@@ -1092,6 +1216,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-08",
+            category="AI/ML",
             text=(
                 "A mobile game wants to recommend which game mode a player is most likely to "
                 "enjoy next, based on their play history. Which type of system is this?"
@@ -1107,6 +1232,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-09",
+            category="Cybersecurity",
             text=(
                 "A game's backend API has no rate limiting. What is the most likely consequence "
                 "if a malicious actor scripts thousands of rapid requests against it?"
@@ -1122,6 +1248,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-10",
+            category="Cybersecurity",
             text=(
                 "A studio collects gameplay telemetry (session length, level failures, in-app "
                 "purchases) from players. Which practice best respects player privacy while "
@@ -1138,6 +1265,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-11",
+            category="DevOps",
             text=(
                 "A game studio pushes an update directly to 100% of players with no staged "
                 "rollout, and it introduces a game-breaking bug. What would a staged/canary "
@@ -1154,6 +1282,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-12",
+            category="Networking",
             text=(
                 "Which best describes the difference between a game's \"client\" and its "
                 "\"server\" in an online multiplayer architecture?"
@@ -1169,6 +1298,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-13",
+            category="AI/ML",
             text=(
                 "A studio wants to reduce cheating in a competitive mode without server-side "
                 "validation being technically feasible for every single action. Which "
@@ -1185,6 +1315,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-14",
+            category="Software Engineering",
             text=(
                 "A mobile game's crash reports show most failures happen on low-end devices "
                 "with limited memory. What's the most directly relevant fix category?"
@@ -1200,6 +1331,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="zuberi-15",
+            category="DevOps",
             text=(
                 "Why might a game studio choose to store player progress in the cloud rather "
                 "than only on-device?"
@@ -1218,6 +1350,7 @@ BOOTH_QUESTION_BANKS = {
     6: [
         BankQuestion(
             key="tbm-01",
+            category="Cybersecurity",
             text=(
                 "A company adopts a \"Zero Trust\" security architecture. What does that "
                 "fundamentally assume, compared to a traditional perimeter-based model?"
@@ -1233,6 +1366,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-02",
+            category="Cybersecurity",
             text=(
                 "What is the primary purpose of a Security Operations Center (SOC)?"
             ),
@@ -1247,6 +1381,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-03",
+            category="Cybersecurity",
             text=(
                 "An enterprise client asks TBM Limited to review why an internal server was "
                 "compromised despite having a firewall. The attacker had valid, stolen employee "
@@ -1263,6 +1398,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-04",
+            category="AI/ML",
             text=(
                 "In AI/ML, what is \"training data\" used for?"
             ),
@@ -1277,6 +1413,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-05",
+            category="Cybersecurity",
             text=(
                 "A cybersecurity team receives an alert that a server is sending large volumes "
                 "of outbound traffic to an unfamiliar external IP at 3 AM, when no scheduled job "
@@ -1293,6 +1430,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-06",
+            category="Cybersecurity",
             text=(
                 "Which best describes the difference between a vulnerability and an exploit?"
             ),
@@ -1307,6 +1445,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-07",
+            category="DevOps",
             text=(
                 "TBM's cloud team migrates a client's infrastructure to use auto-scaling. What "
                 "problem does auto-scaling primarily solve?"
@@ -1322,6 +1461,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-08",
+            category="Cybersecurity",
             text=(
                 "A company stores customer passwords using a fast, unsalted MD5 hash. Why is "
                 "this considered poor practice today?"
@@ -1337,6 +1477,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-09",
+            category="AI/ML",
             text=(
                 "An AI model performs very well on its training data but poorly on new, unseen "
                 "data. What is this phenomenon called?"
@@ -1352,6 +1493,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-10",
+            category="Cybersecurity",
             text=(
                 "A client asks TBM to help them meet a compliance requirement that all sensitive "
                 "data be unreadable if a laptop is lost or stolen. Which control most directly "
@@ -1368,6 +1510,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-11",
+            category="Cybersecurity",
             text=(
                 "Which of these best describes the purpose of a \"penetration test\"?"
             ),
@@ -1382,6 +1525,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-12",
+            category="DevOps",
             text=(
                 "A DevOps team wants every infrastructure change to be reviewed, versioned, and "
                 "reproducible rather than made by hand on live servers. Which practice enables "
@@ -1398,6 +1542,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-13",
+            category="Cybersecurity",
             text=(
                 "Why do enterprise security teams generally prefer centralized logging (all "
                 "systems shipping logs to one place) over each server keeping its own local "
@@ -1414,6 +1559,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-14",
+            category="AI/ML",
             text=(
                 "An AI chatbot deployed by a company starts giving confidently wrong answers to "
                 "factual questions. What is this commonly called?"
@@ -1429,6 +1575,7 @@ BOOTH_QUESTION_BANKS = {
         ),
         BankQuestion(
             key="tbm-15",
+            category="Cybersecurity",
             text=(
                 "A client's cybersecurity policy requires \"defense in depth.\" What does that "
                 "principle actually mean?"
@@ -1442,5 +1589,72 @@ BOOTH_QUESTION_BANKS = {
             correct_index=1,
             explanation="Correct, precise definition of defense in depth as layered/redundant controls, not single-point reliance.",
         ),
+        BankQuestion(
+            key="tbm-16",
+            category="Git",
+            text=(
+                "TBM's security team wants every change to a client's incident-response runbook "
+                "reviewed and reversible if it turns out wrong. Which practice most directly "
+                "enables that?"
+            ),
+            options=(
+                "Editing the shared runbook document in place with no history kept",
+                "Version-controlling the runbook (e.g. in Git) so every change has a reviewable diff and can be reverted",
+                "Emailing the updated runbook to the team once a quarter",
+                "Keeping only one physical printed copy in the office",
+            ),
+            correct_index=1,
+            explanation="Version control's reviewability/revertability is the actual mechanism that satisfies both requirements here.",
+        ),
+        BankQuestion(
+            key="tbm-17",
+            category="Testing",
+            text=(
+                "Before rolling a new detection rule out to a client's entire SOC, TBM runs it "
+                "against a year of historical logs to see how many alerts it would have fired. "
+                "What is this practice primarily meant to catch?"
+            ),
+            options=(
+                "Whether the rule is written in the correct programming language",
+                "A high false-positive rate that would overwhelm analysts before the rule ever reaches production",
+                "Whether the client's Wi-Fi password is strong enough",
+                "Nothing useful -- historical replay has no relationship to future rule performance",
+            ),
+            correct_index=1,
+            explanation="Backtesting a detection rule against historical data is specifically a test for false-positive rate before it burdens real analysts.",
+        ),
+        BankQuestion(
+            key="tbm-18",
+            category="Networking",
+            text=(
+                "A client asks TBM why their internal file server, reachable from every "
+                "department's subnet, was an easy pivot point once a single laptop was "
+                "compromised. What networking concept explains the risk?"
+            ),
+            options=(
+                "Lack of network segmentation -- flat networks let a single compromised host reach far more of the environment",
+                "The server's hostname was too easy to guess",
+                "The server was using too new a version of its operating system",
+                "This has nothing to do with networking design",
+            ),
+            correct_index=0,
+            explanation="Flat-network lateral movement is a core networking-security concept, distinct from the unrelated distractors.",
+        ),
     ],
 }
+
+# question_text -> category, for correlating a database KnowledgeQuestion row back to its
+# origin category without adding a DB column -- see MissionService.assign_knowledge_subset,
+# which uses this for category-balanced sampling. Only ever populated from this file, since
+# KnowledgeQuestion rows are never authored anywhere else (see app/blueprints/agent.py). A
+# question whose text isn't found here (e.g. a test fixture) is simply left uncategorized by
+# the caller, which degrades to a plain random sample -- never an error.
+CATEGORY_BY_TEXT = {
+    bank_q.text: bank_q.category
+    for bank_questions in BOOTH_QUESTION_BANKS.values()
+    for bank_q in bank_questions
+}
+
+
+def category_for_text(question_text):
+    return CATEGORY_BY_TEXT.get(question_text)

@@ -6,6 +6,7 @@ from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
+from ..knowledge_bank import category_for_text
 from ..models import Fragment, Mission, TeamMission
 
 KNOWLEDGE_CHECK_POOL_SIZE = 5
@@ -119,9 +120,39 @@ class MissionService:
             # returning an empty list, which would make knowledge_check_complete trivially true
             # (0 answers >= 0 questions) and skip the Knowledge Check entirely.
 
-        chosen = random.sample(all_questions, min(pool_size, len(all_questions)))
+        chosen = self._pick_category_balanced(all_questions, pool_size)
         team_mission.knowledge_question_pool = json.dumps([q.id for q in chosen])
         db.session.commit()
+        return chosen
+
+    def _pick_category_balanced(self, all_questions, pool_size):
+        # Draws pool_size questions spread across as many distinct categories as the pool
+        # actually has (one per category per pass, cycling for a second pass only if pool_size
+        # exceeds the category count) instead of a flat random.sample, which could otherwise
+        # hand one team all 5 questions from the same discipline by chance. Falls back to
+        # plain randomness within a single "Uncategorized" bucket for any question whose text
+        # doesn't match app/knowledge_bank.py (e.g. a test fixture) -- never errors.
+        if len(all_questions) <= pool_size:
+            return list(all_questions)
+
+        by_category = {}
+        for q in all_questions:
+            category = category_for_text(q.question_text) or "Uncategorized"
+            by_category.setdefault(category, []).append(q)
+        for bucket in by_category.values():
+            random.shuffle(bucket)
+
+        categories = list(by_category.keys())
+        random.shuffle(categories)
+
+        chosen = []
+        while len(chosen) < pool_size and any(by_category.values()):
+            for category in categories:
+                if len(chosen) >= pool_size:
+                    break
+                bucket = by_category[category]
+                if bucket:
+                    chosen.append(bucket.pop())
         return chosen
 
     def complete_mission(

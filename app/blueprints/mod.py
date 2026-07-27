@@ -328,6 +328,10 @@ def generate_credential():
         qr_lines = [f"DevCrypt Team: {name}", f"Key: {secret}"]
     elif kind in ("game_master", "booth_agent", "security_officer"):
         user = User.query.filter_by(email=name).first()
+        if user is not None and user.role != kind:
+            return jsonify(
+                {"error": f"{name} is already registered as a different role ({user.role})."}
+            ), 409
         secret = generate_password()
         if user is None:
             user = User(email=name, role=kind)

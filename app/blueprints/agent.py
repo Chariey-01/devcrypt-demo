@@ -11,8 +11,6 @@ from ..models import (
     CodeSubmission,
     EvidenceFile,
     Hint,
-    KnowledgeOption,
-    KnowledgeQuestion,
     Mission,
     TeamMission,
     TestCase,
@@ -84,13 +82,6 @@ def _owned_asset_or_404(asset_id):
     if asset.mission.owner_agent_id != current_user.id:
         abort(404)
     return asset
-
-
-def _owned_knowledge_question_or_404(question_id):
-    question = KnowledgeQuestion.query.get_or_404(question_id)
-    if question.mission.owner_agent_id != current_user.id:
-        abort(404)
-    return question
 
 
 def _serialize_mission_summary(mission):
@@ -671,56 +662,9 @@ def delete_asset(asset_id):
     return jsonify({"ok": True})
 
 
-@agent_bp.route("/missions/<int:mission_id>/knowledge-questions", methods=["POST"])
-@login_required
-@roles_required("booth_agent")
-def create_knowledge_question(mission_id):
-    mission = _owned_mission_or_404(mission_id)
-    data = request.get_json(silent=True) or {}
-    question_text = (data.get("question_text") or "").strip()
-    options_data = [o for o in (data.get("options") or []) if (o.get("option_text") or "").strip()]
-    if not question_text:
-        return jsonify({"error": "question_text is required."}), 400
-    if len(options_data) < 2:
-        return jsonify({"error": "At least 2 options are required."}), 400
-    if sum(1 for o in options_data if o.get("is_correct")) != 1:
-        return jsonify({"error": "Exactly one option must be marked correct."}), 400
-
-    next_order = (
-        db.session.query(db.func.max(KnowledgeQuestion.order_index))
-        .filter_by(mission_id=mission.id)
-        .scalar()
-        or 0
-    ) + 1
-    question = KnowledgeQuestion(mission_id=mission.id, question_text=question_text, order_index=next_order)
-    db.session.add(question)
-    db.session.flush()
-    for o in options_data:
-        db.session.add(
-            KnowledgeOption(
-                question_id=question.id,
-                option_text=o["option_text"].strip(),
-                is_correct=bool(o.get("is_correct")),
-            )
-        )
-    audit_service.log(
-        current_user, "booth_agent", "knowledge_question_uploaded", "mission", mission.id,
-        metadata=question_text,
-    )
-    db.session.commit()
-    notify_global("mission_updated")
-    return jsonify(_serialize_knowledge_question(question)), 201
-
-
-@agent_bp.route("/knowledge-questions/<int:question_id>", methods=["DELETE"])
-@login_required
-@roles_required("booth_agent")
-def delete_knowledge_question(question_id):
-    question = _owned_knowledge_question_or_404(question_id)
-    db.session.delete(question)
-    db.session.commit()
-    notify_global("mission_updated")
-    return jsonify({"ok": True})
+# Knowledge Check questions are intentionally NOT agent-authorable — see app/knowledge_bank.py
+# for why. Mission detail still serializes existing knowledge_questions (below) for read-only
+# visibility, but there is no create/delete route for them anymore.
 
 
 def _serialize_submission(submission):
