@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TestCase, User
+from app.models import Challenge, EventState, Hint, Mission, Team, TestCase, User
 
 
 def _login_gm(client):
@@ -55,11 +55,46 @@ def test_hint_limit_reflects_configured_value_in_status(client, app):
     assert status["team"]["hints_remaining"] == 1
 
 
-def test_hint_limit_enforced_at_configured_value(client, app):
+def test_hint_request_is_a_no_op_when_the_booth_has_no_authored_hints(client, app):
+    # Hint gating moved from the old event-wide `hint_limit` setting to a per-booth cap based
+    # on how many Hint rows the Booth Agent actually authored for this challenge (see
+    # ScoringService.MAX_HINTS_PER_BOOTH and missions.request_hint). With zero Hint rows here,
+    # there's nothing to reveal, so the request is a no-op 200, not a 403 -- and this holds
+    # regardless of what the GM's event-level hint_limit is configured to.
     _setup_auto_graded_mission(app, hint_limit=0)
     _login_team(client)
     res = client.post("/missions/hint")
-    assert res.status_code == 403
+    assert res.status_code == 200
+    body = res.get_json()
+    assert body["hints_taken"] == 0
+    assert body["hints_available"] == 0
+
+
+def test_hint_request_is_capped_at_max_hints_per_booth_regardless_of_authored_count(client, app):
+    from app.services.scoring_service import ScoringService
+
+    mission_id, team_id = _setup_auto_graded_mission(app, hint_limit=99)
+    with app.app_context():
+        mission = Mission.query.get(mission_id)
+        for i in range(5):  # more hints authored than the per-booth cap allows
+            db.session.add(Hint(challenge_id=mission.challenge.id, order_index=i, text=f"hint {i}"))
+        db.session.commit()
+    _login_team(client)
+
+    seen_hints_available = []
+    for _ in range(5):
+        res = client.post("/missions/hint")
+        assert res.status_code == 200
+        seen_hints_available.append(res.get_json()["hints_available"])
+
+    assert seen_hints_available[-1] == 0
+    with app.app_context():
+        team = Team.query.filter_by(name="Alpha").first()
+        assert team.hints_used == ScoringService.MAX_HINTS_PER_BOOTH
+        # team.score is clamped at 0 by award_points, so a team starting at 0 just stays at 0
+        # here -- the actual per-hint deduction is tracked separately in hint_points.
+        assert team.score == 0
+        assert team.hint_points == -(ScoringService.HINT_PENALTY * ScoringService.MAX_HINTS_PER_BOOTH)
 
 
 def test_leaderboard_public_false_hides_team_data(client, app):

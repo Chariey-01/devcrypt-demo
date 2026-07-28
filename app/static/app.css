@@ -864,6 +864,41 @@ button:disabled {
   box-shadow: var(--shadow-sm);
 }
 
+/* Score breakdown — glanceable per-category tiles (total, booth, MCQ, coding,
+   cipher, hint, time, leaderboard) on the player dashboard. */
+
+.score-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.6rem;
+}
+
+.score-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.8rem;
+}
+
+.score-tile-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.score-tile-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
 /* Ops panels — compact "MISSION STATUS / THREAT LEVEL / SYSTEM HEALTH"
    stat tiles. Kept visually distinct from .card (tighter padding, corner
    bracket detail, panel-tier background) so the two don't blur together. */

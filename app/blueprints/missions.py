@@ -50,12 +50,21 @@ def play():
     return render_template("player/dashboard.html")
 
 
-def _hint_text(challenge):
-    # Agent-authored hints (Hint rows) take precedence; legacy single hint_text is the
-    # fallback for missions that predate the multi-hint authoring flow.
+def _available_hint_texts(challenge):
+    # Agent-authored hints (Hint rows, ordered) take precedence; legacy single hint_text is the
+    # fallback for missions that predate the multi-hint authoring flow -- treated as a single
+    # slot 1 hint in that case.
     if challenge.hints:
-        return challenge.hints[0].text
-    return challenge.hint_text
+        return [h.text for h in challenge.hints]
+    if challenge.hint_text:
+        return [challenge.hint_text]
+    return []
+
+
+def _revealed_hints(challenge, team_mission):
+    if not team_mission or not team_mission.hints_taken:
+        return []
+    return _available_hint_texts(challenge)[: team_mission.hints_taken]
 
 
 def _serialize_knowledge_question(question, team_mission):
@@ -88,10 +97,17 @@ def _serialize_grading_results(results):
 
 
 def _serialize_challenge(challenge, team_mission):
+    hints_taken = team_mission.hints_taken if team_mission else 0
+    max_hints = min(ScoringService.MAX_HINTS_PER_BOOTH, len(_available_hint_texts(challenge)))
     payload = {
         "type": challenge.type,
         "prompt": challenge.prompt,
-        "hint_text": _hint_text(challenge) if (team_mission and team_mission.hint_used) else None,
+        # Legacy single-string field, kept for anything still reading it — always just the most
+        # recently revealed hint, same as before this booth had more than one.
+        "hint_text": _revealed_hints(challenge, team_mission)[-1] if hints_taken else None,
+        "hints_revealed": _revealed_hints(challenge, team_mission),
+        "hints_taken": hints_taken,
+        "hints_available": max(0, max_hints - hints_taken),
         "grading_mode": challenge.grading_mode,
     }
     if challenge.grading_mode == "auto":
@@ -164,6 +180,11 @@ def status():
             "integrity": team.integrity,
             "hints_used": team.hints_used,
             "hints_remaining": max(0, state.hint_limit - team.hints_used),
+            "mcq_points": team.mcq_points,
+            "coding_points": team.coding_points,
+            "cipher_points": team.cipher_points,
+            "hint_points": team.hint_points,
+            "time_bonus_points": team.time_bonus_points,
         },
         "cryptogram": cipher_service.board_state(team, ordered_missions),
         "fragments": [
@@ -190,6 +211,7 @@ def status():
             "started_at": team_mission.started_at.isoformat() if team_mission.started_at else None,
             "status": team_mission.status,
             "attempts": team_mission.attempts,
+            "booth_score": team_mission.score,
             "penalty_remaining": remaining_penalty,
             # Frozen the instant a deciding submission arrived — once present, the frontend
             # must show these instead of computing a live countdown from started_at, and must
@@ -295,6 +317,17 @@ def answer_knowledge_question(question_id):
     if option.is_correct:
         db.session.refresh(team, with_for_update=True)
         scoring_service.score_knowledge_correct(team, team_mission)
+
+    # This answer just completed the assigned set for this booth -- award the "all correct"
+    # bonus if every one of them (including this one) was right. db.session.add(answer) above
+    # hasn't been committed yet, but team_mission.knowledge_answers is a live relationship, so
+    # it won't include `answer` until it's flushed -- flush (not commit) first so the "is this
+    # the last one, were they all correct" check below sees the complete, accurate set.
+    db.session.flush()
+    if len(team_mission.knowledge_answers) >= len(assigned_questions):
+        if all(a.is_correct for a in team_mission.knowledge_answers):
+            db.session.refresh(team, with_for_update=True)
+            scoring_service.award_all_mcq_correct_bonus(team, team_mission)
 
     db.session.commit()
 
@@ -440,8 +473,6 @@ def request_hint():
     state = event_service.get_state()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
-    if team.hints_used >= state.hint_limit:
-        return jsonify({"error": "No hints remaining for this event."}), 403
 
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
@@ -449,13 +480,30 @@ def request_hint():
         return jsonify({"error": "No active mission."}), 400
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
-    if team_mission.hint_used:
-        return jsonify({"hint": _hint_text(mission.challenge)})
+    available_hints = _available_hint_texts(mission.challenge)
+    max_hints_here = min(ScoringService.MAX_HINTS_PER_BOOTH, len(available_hints))
+
+    if team_mission.hints_taken >= max_hints_here:
+        # Already at this booth's cap (or the Agent simply didn't author that many hints) --
+        # hand back whatever's already been revealed rather than erroring, so a stale/duplicate
+        # client request is a no-op, not a confusing failure.
+        return jsonify(
+            {"hint": _revealed_hints(mission.challenge, team_mission)[-1] if team_mission.hints_taken else None,
+             "hints_revealed": _revealed_hints(mission.challenge, team_mission),
+             "hints_taken": team_mission.hints_taken,
+             "hints_available": 0}
+        )
 
     db.session.refresh(team, with_for_update=True)
     scoring_service.apply_hint_penalty(team, team_mission)
     db.session.commit()
-    return jsonify({"hint": _hint_text(mission.challenge)})
+    revealed = _revealed_hints(mission.challenge, team_mission)
+    return jsonify(
+        {"hint": revealed[-1] if revealed else None,
+         "hints_revealed": revealed,
+         "hints_taken": team_mission.hints_taken,
+         "hints_available": max(0, max_hints_here - team_mission.hints_taken)}
+    )
 
 
 @missions_bp.route("/soft-lock", methods=["POST"])

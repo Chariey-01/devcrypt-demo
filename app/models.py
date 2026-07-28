@@ -48,6 +48,17 @@ class Team(db.Model):
     integrity = db.Column(db.Integer, default=100)
     booth_current = db.Column(db.Integer, db.ForeignKey("missions.id"), nullable=True)
     hints_used = db.Column(db.Integer, default=0)
+    # Running per-category breakdown of `score` above, purely for dashboard display (which
+    # category earned/cost how much) — never the source of truth for the total itself. Kept in
+    # lockstep with every ScoringService.award_points(..., category=...) call; not necessarily
+    # individually floor-clamped at 0 the way the total is (a deductions figure reads naturally
+    # as negative), so these are display-only and can drift slightly from a literal sum if the
+    # total ever gets floor-clamped — that's expected, not a bug.
+    mcq_points = db.Column(db.Integer, default=0, nullable=False)
+    coding_points = db.Column(db.Integer, default=0, nullable=False)
+    cipher_points = db.Column(db.Integer, default=0, nullable=False)
+    hint_points = db.Column(db.Integer, default=0, nullable=False)
+    time_bonus_points = db.Column(db.Integer, default=0, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # NULL = legacy behavior (start at order_index 0). Set by the Game Master to place a
     # team at a specific booth first.
@@ -258,7 +269,11 @@ class TeamMission(db.Model):
     integrity_delta = db.Column(db.Integer, default=0)
     submission_text = db.Column(db.Text, nullable=True)
     penalty_until = db.Column(db.DateTime, nullable=True)
+    # hint_used stays a plain "has this booth ever used a hint" flag for any code that only
+    # needs that (e.g. the no-hint bonus check) — hints_taken is the real per-booth counter
+    # (0..MAX_HINTS_PER_BOOTH) driving sequential hint reveal and per-hint scoring.
     hint_used = db.Column(db.Boolean, default=False)
+    hints_taken = db.Column(db.Integer, default=0, nullable=False)
 
     # --- Frozen at the moment a deciding submission is received (before grading/review runs),
     # never touched by how long grading or Booth Agent review subsequently takes. Reset back to

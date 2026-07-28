@@ -122,7 +122,9 @@ def test_correct_answer_scores_points_and_unlocks_the_challenge(client, app):
 
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
-        assert team.score == 3  # KNOWLEDGE_CORRECT
+        # KNOWLEDGE_CORRECT(10) + ALL_MCQ_CORRECT_BONUS(20): with only one question assigned,
+        # answering it correctly both scores the question AND completes the "all correct" set.
+        assert team.score == 30
 
     status = client.get("/missions/status").get_json()
     assert status["mission"]["knowledge_check_complete"] is True
@@ -160,7 +162,9 @@ def test_answering_twice_does_not_double_score(client, app):
 
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
-        assert team.score == 3  # not 6
+        # KNOWLEDGE_CORRECT(10) + ALL_MCQ_CORRECT_BONUS(20) = 30, not 60 -- the repeat answer
+        # is rejected as already_answered before either bonus can be paid a second time.
+        assert team.score == 30
 
 
 def test_correct_answer_reveals_a_cipher_clue_but_real_fragment_still_requires_the_challenge(client, app):

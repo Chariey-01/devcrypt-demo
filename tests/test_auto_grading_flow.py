@@ -375,8 +375,17 @@ def test_partial_credit_does_not_double_count_once_the_team_eventually_passes(cl
 
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
-        clean_pass = 20 + 5 + 5 + 10  # CHALLENGE_COMPLETE + NO_HINT + ON_TIME + PERFECT, no hint used
-        assert team.score == clean_pass
+        # First submit (60%, fail) pays partial credit: round(CHALLENGE_COMPLETE(20) * 0.6) = 12,
+        # and increments team_mission.attempts to 1 via apply_retry_penalty (so the later pass is
+        # NOT a first attempt). Second submit (100%, pass) pays:
+        #   base = CODING_CHALLENGE_PASS(100) - already_paid(12) = 88
+        #   + NO_HINT_BONUS(5)            (no hint requested)
+        #   + FINISH_BOOTH_BONUS(30)      (no FIRST_ATTEMPT_BONUS: this wasn't attempt 1)
+        #   + FRAGMENT_BONUS(50)          (own "cipher" line item, still summed into team.score)
+        #   + time bonus(20)              (test runs well under the 300s tier)
+        #   = 193
+        # Total: 12 (partial) + 193 (pass) = 205.
+        assert team.score == 205
         assert len(team.fragments) == 1
 
 

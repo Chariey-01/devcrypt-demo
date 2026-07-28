@@ -434,6 +434,33 @@ document.addEventListener("DOMContentLoaded", () => {
       .join("");
   }
 
+  // "Booth score" is this specific booth's team_mission.score -- 0/absent once a team has
+  // finished every booth (data.mission is null then), so the tile just shows a dash instead.
+  function renderScoreBreakdown(data) {
+    const el = document.getElementById("score-breakdown");
+    const team = data.team;
+    const boothScore = data.mission && typeof data.mission.booth_score === "number" ? data.mission.booth_score : null;
+    const tiles = [
+      { icon: "gauge", label: "Total Score", value: team.score },
+      { icon: "target", label: "Booth Score", value: boothScore === null ? "—" : boothScore },
+      { icon: "scan-line", label: "MCQ Score", value: team.mcq_points },
+      { icon: "cpu", label: "Coding Score", value: team.coding_points },
+      { icon: "hash", label: "Cipher Score", value: team.cipher_points },
+      { icon: "key", label: "Hint Deductions", value: team.hint_points },
+      { icon: "timer", label: "Time Bonus", value: team.time_bonus_points },
+      { icon: "trophy", label: "Leaderboard Score", value: team.score },
+    ];
+    el.innerHTML = tiles
+      .map(
+        (t) => `
+      <div class="score-tile">
+        <span class="score-tile-label">${icon(t.icon, 12)} ${t.label}</span>
+        <span class="score-tile-value">${t.value}</span>
+      </div>`
+      )
+      .join("");
+  }
+
   function renderBanners(data) {
     const eventBanner = document.getElementById("event-banner");
     if (data.event_status !== "running") {
@@ -675,15 +702,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const hintBtn = panel.querySelector("#request-hint");
     if (hintBtn) {
       hintBtn.addEventListener("click", async () => {
-        const hintLimit = data.team.hints_used + data.team.hints_remaining;
+        const hintNumber = parseInt(hintBtn.dataset.hintsTaken, 10) + 1;
         if (
           !confirm(
-            `Request a hint? Costs 15 points and 10% integrity, and uses one of your team's ${hintLimit} event-wide hints.`
+            `Request hint ${hintNumber} for this booth? Costs 15 points and 10% integrity. This can't be undone.`
           )
         )
           return;
         const res = await api("/missions/hint", { method: "POST" });
-        showMessage(res.data.hint ? `HINT: ${res.data.hint}` : res.data.error);
+        showMessage(res.data.hint ? `HINT ${hintNumber}: ${res.data.hint}` : res.data.error);
         await refresh();
       });
     }
@@ -1070,12 +1097,13 @@ document.addEventListener("DOMContentLoaded", () => {
             mission.penalty_remaining
           }s remaining.</p>`;
         }
-        if (c.hint_text) {
-          challengeHtml += `<p class="narrative-message">${icon("key", 13)} HINT: ${escapeHtml(c.hint_text)}</p>`;
-        } else {
-          challengeHtml += `<button id="request-hint" class="ghost">${icon("key", 13)} Request Hint (${
-            data.team.hints_remaining
-          } left)</button>`;
+        (c.hints_revealed || []).forEach((text, i) => {
+          challengeHtml += `<p class="narrative-message">${icon("key", 13)} HINT ${i + 1}: ${escapeHtml(text)}</p>`;
+        });
+        if (c.hints_available > 0) {
+          challengeHtml += `<button id="request-hint" class="ghost" data-hints-taken="${c.hints_taken || 0}">${icon("key", 13)} Request Hint (${
+            c.hints_available
+          } left this booth)</button>`;
         }
         if (mission.attempts >= data.soft_lock_min_attempts) {
           challengeHtml += `
@@ -1170,8 +1198,9 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("team-name").innerHTML = `${icon("users", 13)} ${escapeHtml(data.team.name)}`;
     document.getElementById("team-score").innerHTML = `${icon("gauge", 13)} Score ${data.team.score}`;
     document.getElementById("team-integrity").innerHTML = `${icon("signal", 13)} Integrity ${data.team.integrity}%`;
-    document.getElementById("team-hints").innerHTML = `${icon("key", 13)} Hints ${data.team.hints_remaining}/3`;
+    document.getElementById("team-hints").innerHTML = `${icon("key", 13)} Hint penalty ${data.team.hint_points}`;
     renderBanners(data);
+    renderScoreBreakdown(data);
     renderProgressTracker(data);
     renderCryptogram(data.cryptogram);
     renderFragments(data.fragments);

@@ -43,10 +43,13 @@ def test_complete_mission_does_not_lose_a_concurrent_score_update(app):
         MissionService().complete_mission(team, team_mission, mission, "passed")
         db.session.commit()
 
-        # score_mission_pass awards CHALLENGE_COMPLETE(20) + NO_HINT_BONUS(5) + ON_TIME_BONUS(5)
-        # + PERFECT_BONUS(10) = 40. Before the fix, complete_mission used the stale in-memory
-        # team.score (0) as its base, landing on 40 and silently discarding the concurrent +50.
-        # With the row-locked refresh in place, it re-reads the true DB score (50) first,
-        # landing on 90.
+        # score_mission_pass awards CHALLENGE_COMPLETE(20) + NO_HINT_BONUS(5)
+        # + FIRST_ATTEMPT_BONUS(20) + FINISH_BOOTH_BONUS(30) + FRAGMENT_BONUS(50) = 125 (no
+        # perfect-booth bonus: this team_mission has no knowledge_answers, so _all_mcq_correct
+        # is False). freeze_submission sets elapsed_seconds=0 (no started_at set here), which
+        # falls in the <=300s time-bonus tier, adding +20 -> 145 total. Before the fix,
+        # complete_mission used the stale in-memory team.score (0) as its base, landing on 145
+        # and silently discarding the concurrent +50. With the row-locked refresh in place, it
+        # re-reads the true DB score (50) first, landing on 195.
         final = Team.query.get(team_id)
-        assert final.score == 90
+        assert final.score == 195
