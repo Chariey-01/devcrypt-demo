@@ -12,39 +12,44 @@
     </form>
   </header>
 
-  <p class="section-heading">{{ icon('terminal', 14) }} Event Controls</p>
-  <section class="controls">
-    <form method="post" action="{{ url_for('mod.start_event') }}" class="inline-form">
-      <button type="submit">{{ icon('zap', 13) }} {{ 'Resume Event' if state.status == 'paused' else 'Initialize Mission' }}</button>
-    </form>
-    <form method="post" action="{{ url_for('mod.pause_event') }}" class="inline-form">
-      <button type="submit" class="ghost">{{ icon('octagon-alert', 13) }} Pause Event</button>
-    </form>
-    <form method="post" action="{{ url_for('mod.end_event') }}" class="inline-form">
-      <button type="submit" class="danger">{{ icon('siren', 13) }} Terminate Event</button>
-    </form>
-    <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">{{ icon('database', 13) }} Export CSV</a>
-    <a class="ghost-link" href="{{ url_for('mod.export_submissions_csv') }}">{{ icon('database', 13) }} Export Submissions</a>
-    <a class="ghost-link" href="{{ url_for('mod.export_challenges_csv') }}">{{ icon('database', 13) }} Export Challenges</a>
-    <a class="ghost-link" href="{{ url_for('mod.export_event_stats_csv') }}">{{ icon('database', 13) }} Export Event Stats</a>
-    <a class="ghost-link" href="{{ url_for('mod.analytics') }}">{{ icon('gauge', 13) }} Analytics</a>
-    <a class="ghost-link" href="{{ url_for('mod.event_settings') }}">{{ icon('terminal', 13) }} Event Settings</a>
+  <section class="card dash-section">
+    <p class="section-heading">{{ icon('terminal', 14) }} Event Controls</p>
+    <div class="controls">
+      <form method="post" action="{{ url_for('mod.start_event') }}" class="inline-form">
+        <button type="submit">{{ icon('zap', 13) }} {{ 'Resume Event' if state.status == 'paused' else 'Initialize Mission' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('mod.pause_event') }}" class="inline-form">
+        <button type="submit" class="ghost">{{ icon('octagon-alert', 13) }} Pause Event</button>
+      </form>
+      <form method="post" action="{{ url_for('mod.end_event') }}" class="inline-form">
+        <button type="submit" class="danger">{{ icon('siren', 13) }} Terminate Event</button>
+      </form>
+    </div>
+    <div class="controls">
+      <form method="post" action="{{ url_for('mod.publish_event') }}" class="inline-form">
+        <button type="submit" class="ghost">{{ icon('radar', 13) }} Publish Event</button>
+      </form>
+      <form method="post" action="{{ url_for('mod.archive_event') }}" class="inline-form">
+        <button type="submit" class="ghost">{{ icon('file-lock-2', 13) }} Archive Event</button>
+      </form>
+    </div>
+    <div class="controls">
+      <a class="ghost-link" href="{{ url_for('mod.export_csv') }}">{{ icon('database', 13) }} Export CSV</a>
+      <a class="ghost-link" href="{{ url_for('mod.export_submissions_csv') }}">{{ icon('database', 13) }} Export Submissions</a>
+      <a class="ghost-link" href="{{ url_for('mod.export_challenges_csv') }}">{{ icon('database', 13) }} Export Challenges</a>
+      <a class="ghost-link" href="{{ url_for('mod.export_event_stats_csv') }}">{{ icon('database', 13) }} Export Event Stats</a>
+      <a class="ghost-link" href="{{ url_for('mod.analytics') }}">{{ icon('gauge', 13) }} Analytics</a>
+      <a class="ghost-link" href="{{ url_for('mod.event_settings') }}">{{ icon('terminal', 13) }} Event Settings</a>
+    </div>
   </section>
 
-  <section class="controls">
-    <form method="post" action="{{ url_for('mod.publish_event') }}" class="inline-form">
-      <button type="submit" class="ghost">{{ icon('radar', 13) }} Publish Event</button>
-    </form>
-    <form method="post" action="{{ url_for('mod.archive_event') }}" class="inline-form">
-      <button type="submit" class="ghost">{{ icon('file-lock-2', 13) }} Archive Event</button>
+  <section class="card dash-section">
+    <p class="section-heading">{{ icon('radio-tower', 14) }} Broadcast Alert</p>
+    <form method="post" action="{{ url_for('mod.broadcast') }}" class="broadcast-form">
+      <input type="text" name="message" placeholder="Broadcast a message to all teams…" required>
+      <button type="submit">{{ icon('radio-tower', 13) }} Send</button>
     </form>
   </section>
-
-  <p class="section-heading">{{ icon('radio-tower', 14) }} Broadcast Alert</p>
-  <form method="post" action="{{ url_for('mod.broadcast') }}" class="broadcast-form">
-    <input type="text" name="message" placeholder="Broadcast a message to all teams…" required>
-    <button type="submit">{{ icon('radio-tower', 13) }} Send</button>
-  </form>
 
   <p class="section-heading">{{ icon('users', 14) }} Active Teams</p>
   <div class="grid-toolbar">

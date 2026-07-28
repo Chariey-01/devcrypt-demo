@@ -222,6 +222,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // until the player dismisses it, per the physical-event requirement that this stay visible
   // until they've actually moved on, not just flash by.
   let boothTransition = null;
+  // Set once, the first time a booth's Knowledge Check flips to complete — a dismissible
+  // success banner shown right above the now-unlocked challenge panel. kcBannerShownFor stops
+  // it from reappearing on every 2s poll for a booth the player already saw it for.
+  let kcCompleteBanner = null;
+  const kcBannerShownFor = new Set();
   // Fragment-unlock form state. vaults: null until /final-flag/requirements has loaded, then
   // the ordered [{mission_id, title}] list to render one input per. flag: set once the server
   // has actually returned it. fieldErrors: mission_ids the last submit attempt got wrong.
@@ -467,6 +472,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const remaining = Math.max(0, (data.booths_total || 0) - (data.booths_completed || 0));
 
     const timer = computeTimerDisplay(mission);
+    const boothsTotal = data.booths_total || 1;
+    const boothsPct = Math.round(((data.booths_completed || 0) / boothsTotal) * 100);
+    const fragmentsCount = (data.fragments || []).length;
+    const fragmentsPct = Math.round((fragmentsCount / boothsTotal) * 100);
 
     el.innerHTML = `
       <div class="ops-panel">
@@ -480,6 +489,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="ops-panel">
         <p class="ops-label">${icon("check", 14)} Booths Completed</p>
         <p class="ops-value ok">${data.booths_completed} / ${data.booths_total}</p>
+        <div class="mini-progress"><div class="mini-progress-fill" style="width:${boothsPct}%;"></div></div>
       </div>
       <div class="ops-panel">
         <p class="ops-label">${icon("radar", 14)} Booths Remaining</p>
@@ -487,7 +497,8 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>
       <div class="ops-panel">
         <p class="ops-label">${icon("file-lock-2", 14)} Fragments Collected</p>
-        <p class="ops-value info">${(data.fragments || []).length} / ${data.booths_total}</p>
+        <p class="ops-value info">${fragmentsCount} / ${data.booths_total}</p>
+        <div class="mini-progress"><div class="mini-progress-fill accent-2" style="width:${fragmentsPct}%;"></div></div>
       </div>
       <div class="ops-panel">
         <p class="ops-label">${icon("gauge", 14)} Total Score</p>
@@ -524,18 +535,61 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function renderKcCompleteBanner() {
+    const el = document.getElementById("kc-complete-banner");
+    if (!el) return;
+    if (!kcCompleteBanner) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      ${icon("check", 13)} <strong>Knowledge Check complete.</strong>
+      ${icon("unlock", 13)} Coding challenge unlocked for ${escapeHtml(kcCompleteBanner.title)}.
+      <button type="button" class="ghost" id="dismiss-kc-complete" style="margin-left:0.5rem;">Dismiss</button>
+    `;
+    document.getElementById("dismiss-kc-complete").addEventListener("click", () => {
+      kcCompleteBanner = null;
+      renderKcCompleteBanner();
+    });
+  }
+
+  // Select, then explicitly confirm — two clicks, not one. The POST to
+  // /missions/knowledge-check/<id>/answer (same endpoint, same payload shape as before) only
+  // ever fires from the confirm click, never from selecting a card.
   function attachKnowledgeCheckHandlers(panel) {
-    panel.querySelectorAll(".knowledge-option").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        panel.querySelectorAll(".knowledge-option").forEach((b) => (b.disabled = true));
-        const res = await api(`/missions/knowledge-check/${btn.dataset.knowledge}/answer`, {
+    const optionButtons = panel.querySelectorAll(".kc-option");
+    const confirmRow = panel.querySelector("#kc-confirm-row");
+    const confirmBtn = panel.querySelector("#kc-confirm-btn");
+    let selectedBtn = null;
+
+    optionButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        optionButtons.forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        selectedBtn = btn;
+        if (confirmRow) confirmRow.classList.remove("hidden");
+        if (confirmBtn) confirmBtn.disabled = false;
+      });
+    });
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", async () => {
+        if (!selectedBtn) return;
+        optionButtons.forEach((b) => (b.disabled = true));
+        confirmBtn.disabled = true;
+        const questionId = selectedBtn.dataset.knowledge;
+        const optionId = selectedBtn.dataset.option;
+        const res = await api(`/missions/knowledge-check/${questionId}/answer`, {
           method: "POST",
-          body: JSON.stringify({ option_id: parseInt(btn.dataset.option, 10) }),
+          body: JSON.stringify({ option_id: parseInt(optionId, 10) }),
         });
+        selectedBtn.classList.remove("selected");
+        selectedBtn.classList.add(res.ok && res.data.correct ? "correct" : "incorrect");
         showMessage(res.data.message || res.data.error);
         await refresh();
       });
-    });
+    }
   }
 
   function attachChallengeHandlers(panel) {
@@ -652,9 +706,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderTestResults(results) {
     if (!results) return "";
+    const allPassed = results.passed_tests === results.total_tests;
     const rows = results.results
       .map((r) => {
-        const passIcon = icon(r.passed ? "check" : "x", 13);
+        const passIcon = icon(r.passed ? "check" : "x", 12);
         let detail = "";
         if (r.visibility === "visible") {
           detail = `<p class="hint-text mono">input: ${escapeHtml(r.input_data ?? "")} — expected: ${escapeHtml(
@@ -662,14 +717,19 @@ document.addEventListener("DOMContentLoaded", () => {
           )} — got: ${escapeHtml(r.actual_output ?? "")}</p>`;
         }
         return `<div class="ops-panel">
-          <p class="ops-value ${r.passed ? "ok" : "crit"}">${passIcon} ${escapeHtml(r.name)}</p>
+          <p class="ops-value">
+            <span class="badge ${r.passed ? "badge-test-pass" : "badge-test-fail"}">${passIcon} ${r.passed ? "PASS" : "FAIL"}</span>
+          </p>
+          <p class="ops-sub" style="font-size:0.78rem;color:var(--text);margin-top:0.3rem;">${escapeHtml(r.name)}</p>
           ${!r.passed && r.failure_message ? `<p class="hint-text">${escapeHtml(r.failure_message)}</p>` : ""}
           ${detail}
         </div>`;
       })
       .join("");
     return `
-      <p class="hint-text">${icon("gauge", 12)} ${results.passed_tests} / ${results.total_tests} passed</p>
+      <p class="hint-text" style="display:flex;align-items:center;gap:0.5rem;">
+        <span class="badge ${allPassed ? "badge-test-pass" : "badge-test-fail"}">${icon("gauge", 12)} ${results.passed_tests} / ${results.total_tests} passed</span>
+      </p>
       <div class="ops-grid">${rows}</div>`;
   }
 
@@ -860,6 +920,12 @@ document.addEventListener("DOMContentLoaded", () => {
       testResults = testResultsStore.load(currentTeamName, mission.id);
     }
 
+    if (mission.knowledge_check_complete && !kcBannerShownFor.has(mission.id)) {
+      kcBannerShownFor.add(mission.id);
+      kcCompleteBanner = { title: mission.title };
+      renderKcCompleteBanner();
+    }
+
     const nodesSecured = (data.cryptogram || []).filter((w) => w.complete).length;
     const nodesTotal = (data.cryptogram || []).length;
     const threat = missionThreat(mission);
@@ -919,21 +985,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let knowledgeCheckHtml = "";
     if ((mission.knowledge_questions || []).length && !mission.knowledge_check_complete) {
-      const nextQuestion = mission.knowledge_questions.find((q) => !q.answered);
-      knowledgeCheckHtml = `<p class="section-heading">${icon("radar", 14)} Knowledge Check</p>
-        <p class="hint-text">General discipline knowledge — answer every question to unlock this booth's coding challenge. Correct answers reveal a cipher clue.</p>`;
+      const questions = mission.knowledge_questions;
+      const total = questions.length;
+      const answeredCount = questions.filter((q) => q.answered).length;
+      const nextQuestion = questions.find((q) => !q.answered);
+      const letters = ["A", "B", "C", "D", "E", "F"];
+
+      const dotsHtml = questions
+        .map((q, i) => {
+          const cls = q.answered ? "done" : i === answeredCount ? "current" : "";
+          return `<span class="kc-dot ${cls}"></span>`;
+        })
+        .join("");
+
+      knowledgeCheckHtml = `
+        <div class="kc-block">
+          <div class="kc-head">
+            <p class="section-heading">${icon("radar", 14)} Stage 1 — Knowledge Check</p>
+            <span class="kc-counter">Question ${Math.min(answeredCount + 1, total)} of ${total}</span>
+          </div>
+          <div class="kc-dots">${dotsHtml}</div>
+          <p class="hint-text">General discipline knowledge — answer every question to unlock this booth's coding challenge. Correct answers reveal a cipher clue.</p>`;
       if (nextQuestion) {
         knowledgeCheckHtml += `
-          <p>${escapeHtml(nextQuestion.question_text)}</p>
-          ${nextQuestion.options
-            .map(
-              (o) =>
-                `<button class="knowledge-option" data-knowledge="${nextQuestion.id}" data-option="${o.id}">${escapeHtml(
-                  o.option_text
-                )}</button>`
-            )
-            .join("")}`;
+          <p class="kc-question">${escapeHtml(nextQuestion.question_text)}</p>
+          <div class="kc-options">
+            ${nextQuestion.options
+              .map(
+                (o, i) => `
+              <button type="button" class="kc-option" data-knowledge="${nextQuestion.id}" data-option="${o.id}">
+                <span class="kc-option-letter">${letters[i] || i + 1}</span>
+                <span class="kc-option-text">${escapeHtml(o.option_text)}</span>
+              </button>`
+              )
+              .join("")}
+          </div>
+          <div class="kc-confirm-row hidden" id="kc-confirm-row">
+            <button type="button" id="kc-confirm-btn" disabled>${icon("check", 13)} Confirm Answer</button>
+          </div>`;
       }
+      knowledgeCheckHtml += `</div>`;
     }
 
     let challengeHtml = "";
@@ -951,16 +1042,22 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           const attemptsNote =
             c.max_attempts != null
-              ? `<p class="hint-text">${icon("activity", 12)} Attempts used: ${c.attempts_used} / ${c.max_attempts}</p>`
+              ? `<span class="ide-toolbar-note">${icon("activity", 12)} Attempts used: ${c.attempts_used} / ${c.max_attempts}</span>`
               : "";
           challengeHtml += `
-            <div id="code-editor-mount" class="monaco-mount"></div>
-            ${attemptsNote}
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-              <button id="run-tests" class="ghost" type="button">${icon("scan-line", 13)} Run Visible Tests</button>
-              <button id="submit-challenge">${icon("unlock", 13)} Submit Solution</button>
-            </div>
-            <div id="test-results">${renderTestResults(testResults)}</div>`;
+            <div class="ide-panel">
+              <div class="ide-toolbar">
+                <span class="ide-toolbar-label">${icon("terminal", 13)} Code Editor <span class="mono ide-lang">${escapeHtml(c.language || "python")}</span></span>
+                ${attemptsNote}
+              </div>
+              <div id="code-editor-mount" class="monaco-mount"></div>
+              <div class="ide-actions">
+                <button id="run-tests" class="ghost" type="button">${icon("scan-line", 13)} Run Visible Tests</button>
+                <button id="submit-challenge">${icon("unlock", 13)} Submit Solution</button>
+              </div>
+              <p class="hint-text ide-hidden-note">${icon("lock-keyhole", 12)} Submit also grades against hidden test cases you won't see the details of here — passing Run Visible Tests doesn't guarantee a pass.</p>
+              <div id="test-results">${renderTestResults(testResults)}</div>
+            </div>`;
         } else {
           challengeHtml += `
             <textarea id="challenge-answer" rows="4" placeholder="${
@@ -1091,9 +1188,15 @@ document.addEventListener("DOMContentLoaded", () => {
       document.activeElement &&
       document.activeElement.closest &&
       document.activeElement.closest("#code-editor-mount");
+    // A Knowledge Check card picked but not yet confirmed is exactly the same class of
+    // in-progress, client-only state as a Monaco draft or a typed fragment value — a poll tick
+    // landing here would otherwise wipe the "selected" highlight and re-disable the Confirm
+    // button out from under the player mid-decision.
+    const hasUnconfirmedKcPick = document.querySelector(".kc-option.selected") !== null;
     if (
       activeId === "challenge-answer" ||
       inCodeEditor ||
+      hasUnconfirmedKcPick ||
       (activeId && activeId.startsWith("fragment-"))
     ) {
       const newPrompt = data.mission && data.mission.challenge ? data.mission.challenge.prompt : null;
