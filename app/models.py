@@ -185,12 +185,18 @@ class Challenge(db.Model):
     starter_code = db.Column(db.Text, nullable=True)
     # PRIVATE — server-side only. Never included in any player-facing serializer.
     solution_code = db.Column(db.Text, nullable=True)
-    # "manual_review" (default, legacy booth-agent queue) or "auto" (sandboxed TestCase grading).
+    # "manual_review" (default, legacy booth-agent queue), "auto" (sandboxed TestCase grading),
+    # or "pytest" (sandboxed hidden-test-file grading — see test_code below).
     grading_mode = db.Column(db.String(20), default="manual_review")
     pass_threshold = db.Column(db.Integer, default=80)
     max_attempts = db.Column(db.Integer, nullable=True)
     bonus_points = db.Column(db.Integer, default=0)
+    # Whole-suite subprocess timeout in "pytest" mode (vs. a per-TestCase timeout in "auto" mode).
     time_limit_seconds = db.Column(db.Integer, default=5)
+    # PRIVATE — server-side only, never player-facing. Raw source of a hidden pytest test file,
+    # run against the player's submission when grading_mode == "pytest" (see
+    # GradingEngine._run_pytest_suite). NULL for every other grading_mode.
+    test_code = db.Column(db.Text, nullable=True)
     # Agent-declared, optional. "easy" | "medium" | "hard" — display/filter hint only, no
     # behavioral coupling (distinct from the empirically-observed pass-rate shown in Analytics).
     difficulty = db.Column(db.String(20), nullable=True)

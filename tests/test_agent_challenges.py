@@ -21,6 +21,38 @@ def test_agent_can_create_and_manage_own_mission(client, app, two_agents):
     assert res.get_json()["challenge"]["grading_mode"] == "auto"
 
 
+def test_upsert_challenge_preserves_an_existing_pytest_grading_mode(client, app, two_agents):
+    # scripts/import_challenge_content.py sets grading_mode="pytest" for function/pytest-style
+    # challenges. An Agent later editing something unrelated (a hint, bonus points) via this
+    # same PUT route must not silently downgrade that back to "auto" -- see the fix in
+    # app/blueprints/agent.py's upsert_challenge.
+    from app.extensions import db
+    from app.models import Challenge
+
+    login(client, "agent-a@test.local")
+    mission_id = _create_mission(client)
+    client.put(
+        f"/agent/missions/{mission_id}/challenge",
+        json={"prompt": "Detect the issue.", "starter_code": "def solve(): ..."},
+    )
+    with app.app_context():
+        challenge = Challenge.query.filter_by(mission_id=mission_id).first()
+        challenge.grading_mode = "pytest"
+        challenge.test_code = "from submission import solve\n\n\ndef test_solve():\n    assert solve()\n"
+        db.session.commit()
+
+    res = client.put(
+        f"/agent/missions/{mission_id}/challenge",
+        json={"prompt": "Detect the issue.", "starter_code": "def solve(): ...", "bonus_points": 5},
+    )
+    assert res.status_code == 200
+    assert res.get_json()["challenge"]["grading_mode"] == "pytest"
+    with app.app_context():
+        challenge = Challenge.query.filter_by(mission_id=mission_id).first()
+        assert challenge.grading_mode == "pytest"
+        assert challenge.test_code is not None
+
+
 def test_agent_cannot_read_or_edit_another_agents_mission(client, app, two_agents):
     agent_a_id, agent_b_id = two_agents
     login(client, "agent-a@test.local")

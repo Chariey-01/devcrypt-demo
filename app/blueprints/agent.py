@@ -384,7 +384,11 @@ def upsert_challenge(mission_id):
     challenge.function_signature = data.get("function_signature")
     challenge.starter_code = data.get("starter_code")
     challenge.solution_code = data.get("solution_code")
-    challenge.grading_mode = "auto"
+    # Preserve "pytest" mode (test_code isn't editable via this form yet -- see
+    # scripts/import_challenge_content.py) so an unrelated dashboard edit (a hint, bonus points)
+    # can't silently downgrade a pytest-graded booth back to plain stdin/stdout "auto" grading.
+    if challenge.grading_mode != "pytest":
+        challenge.grading_mode = "auto"
     challenge.pass_threshold = int(data.get("pass_threshold") or 80)
     challenge.max_attempts = data.get("max_attempts") or None
     challenge.bonus_points = int(data.get("bonus_points") or 0)

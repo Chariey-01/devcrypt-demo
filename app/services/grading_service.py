@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -159,8 +160,88 @@ class GradingEngine:
         )
 
     def run_visible_tests(self, challenge, code):
+        # getattr(..., None), not challenge.grading_mode: test doubles in tests/test_grading.py
+        # and tests/test_grading_concurrency.py don't define grading_mode at all, and must keep
+        # falling through to the TestCase path below unchanged.
+        if getattr(challenge, "grading_mode", None) == "pytest":
+            # No visible/hidden split exists in a raw pytest file -- "Run Tests" runs the same
+            # full hidden suite as an actual submit (see _run_pytest_suite's visibility="hidden"
+            # on every result: individual assertions/expected values are still never revealed,
+            # only names and a pass/fail count, via the existing hidden-TestCase suppression in
+            # missions._serialize_grading_results).
+            return self._run_pytest_suite(challenge, code)
         visible = [tc for tc in challenge.test_cases if tc.visibility == "visible"]
         return self._score(challenge, self._run_test_cases(challenge, code, visible))
 
     def run_all_tests(self, challenge, code):
+        if getattr(challenge, "grading_mode", None) == "pytest":
+            return self._run_pytest_suite(challenge, code)
         return self._score(challenge, self._run_test_cases(challenge, code, challenge.test_cases))
+
+    def _parse_junit_report(self, report_path):
+        """Returns a list of TestCaseResult from a pytest --junitxml report. Empty list means
+        no <testcase> elements were found at all -- typically a collection failure (e.g. a
+        syntax error in the submission breaks `import submission` before any test can run)."""
+        if not report_path.exists():
+            return []
+        root = ET.parse(report_path).getroot()
+        results = []
+        for tc in root.findall(".//testcase"):
+            passed = tc.find("failure") is None and tc.find("error") is None
+            results.append(
+                TestCaseResult(
+                    name=tc.get("name") or "test",
+                    visibility="hidden",
+                    passed=passed,
+                    weight=1,
+                    failure_message=None if passed else "Test did not pass.",
+                )
+            )
+        return results
+
+    def _run_pytest_suite(self, challenge, code):
+        # Whole-suite timeout (pytest runs every test within one process invocation, unlike the
+        # per-TestCase loop in _run_test_cases) -- same MAX_SUITE_SECONDS ceiling either way.
+        timeout_seconds = min(challenge.time_limit_seconds or 5, MAX_SUITE_SECONDS)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            (tmp_path / "submission.py").write_text(code)
+            (tmp_path / "test_submission.py").write_text(challenge.test_code or "")
+            report_path = tmp_path / "report.xml"
+            with _grading_slots:
+                try:
+                    proc = subprocess.run(
+                        [
+                            sys.executable, "-m", "pytest", "test_submission.py",
+                            "--tb=no", "-q", f"--junitxml={report_path}", "-p", "no:cacheprovider",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout_seconds,
+                        cwd=tmp_dir,
+                        env={"PATH": "/usr/bin:/bin"},
+                        preexec_fn=_set_limits,
+                    )
+                except subprocess.TimeoutExpired:
+                    return self._score(
+                        challenge,
+                        [
+                            TestCaseResult(
+                                name="suite", visibility="hidden", passed=False, weight=1,
+                                failure_message="Suite timed out.", error="timeout",
+                            )
+                        ],
+                    )
+                results = self._parse_junit_report(report_path)
+                if not results:
+                    # Collection failed before any test could run (syntax error, crash, etc.) --
+                    # one failed pseudo-result, not a silently-empty/vacuously-100%-passing suite.
+                    # Diagnostic tail goes in .error, which is never player-facing.
+                    results = [
+                        TestCaseResult(
+                            name="collection", visibility="hidden", passed=False, weight=1,
+                            failure_message="Code failed to run (syntax error or crash).",
+                            error=(proc.stdout + proc.stderr).strip()[-500:],
+                        )
+                    ]
+                return self._score(challenge, results)

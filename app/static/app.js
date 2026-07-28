@@ -1062,8 +1062,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mission.pending_review) {
         challengeHtml += `<p class="narrative-message">${icon("eye", 13)} SUBMISSION ROUTED TO FIELD AGENT FOR REVIEW.</p>`;
       } else {
-        challengeHtml += `<p>${escapeHtml(c.prompt)}</p>`;
-        if (c.grading_mode === "auto") {
+        challengeHtml += `<p>${escapeHtml(c.prompt).replace(/\n/g, "<br>")}</p>`;
+        if (c.grading_mode === "auto" || c.grading_mode === "pytest") {
           if (c.function_signature) {
             challengeHtml += `<p class="hint-text mono">${icon("terminal", 12)} ${escapeHtml(c.function_signature)}</p>`;
           }

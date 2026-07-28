@@ -110,7 +110,7 @@ def _serialize_challenge(challenge, team_mission):
         "hints_available": max(0, max_hints - hints_taken),
         "grading_mode": challenge.grading_mode,
     }
-    if challenge.grading_mode == "auto":
+    if challenge.grading_mode in ("auto", "pytest"):
         last_submission = None
         if team_mission:
             last_submission = (
@@ -371,7 +371,7 @@ def submit_challenge():
     # Auto-graded submissions arrive as {"code": ...}, not {"answer": ...}.
     answer = data.get("code", answer)
 
-    if challenge.grading_mode == "auto":
+    if challenge.grading_mode in ("auto", "pytest"):
         if challenge.max_attempts and team_mission.attempts >= challenge.max_attempts:
             return jsonify({"error": "No attempts remaining for this challenge."}), 403
 
@@ -550,7 +550,7 @@ def run_visible_tests():
         return jsonify({"error": "No active mission."}), 400
 
     challenge = mission.challenge
-    if challenge is None or challenge.grading_mode != "auto":
+    if challenge is None or challenge.grading_mode not in ("auto", "pytest"):
         return jsonify({"error": "This challenge does not support test runs."}), 400
 
     team_mission = mission_service.get_or_create_team_mission(team, mission)
