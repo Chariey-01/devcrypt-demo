@@ -330,10 +330,11 @@ def test_apply_hint_penalty_is_flat_per_hint_and_stacks_up_to_the_per_booth_cap(
 
     service.apply_hint_penalty(team, team_mission)
     service.apply_hint_penalty(team, team_mission)
+    service.apply_hint_penalty(team, team_mission)
 
-    assert team_mission.hints_taken == service.MAX_HINTS_PER_BOOTH == 2
-    assert team.score == 100 - (service.HINT_PENALTY * 2)
-    assert team.integrity == 100 - (service.HINT_INTEGRITY_PENALTY * 2)
+    assert team_mission.hints_taken == service.MAX_HINTS_PER_BOOTH == 3
+    assert team.score == 100 - (service.HINT_PENALTY * 3)
+    assert team.integrity == 100 - (service.HINT_INTEGRITY_PENALTY * 3)
 
 
 def test_apply_retry_penalty_only_hurts_integrity_after_first_attempt():

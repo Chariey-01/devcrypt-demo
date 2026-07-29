@@ -1,0 +1,8 @@
+{
+  "pass_threshold": 70,
+  "bonus_points": 20,
+  "max_attempts": 3,
+  "time_limit_seconds": 1,
+  "difficulty": "medium",
+  "mission_time_limit_seconds": 300
+}

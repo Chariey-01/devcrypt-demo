@@ -45,11 +45,12 @@ class ScoringService:
     )                # > 10 min -> 0, handled by falling through
 
     # ---------------------------------------------------------------------
-    # Hints — sequential, per booth, capped at MAX_HINTS_PER_BOOTH. Both slots cost the same
+    # Hints — sequential, per booth, capped at MAX_HINTS_PER_BOOTH. All slots cost the same
     # flat amount (a first hint costing as much as a whole extra hint later was judged too
-    # punishing — see the product discussion this was built against).
+    # punishing — see the product discussion this was built against). 3 per booth, per the
+    # event's final requirement (every booth ships 3 real Hint rows — see scripts/sync_hints.py).
     # ---------------------------------------------------------------------
-    MAX_HINTS_PER_BOOTH = 2
+    MAX_HINTS_PER_BOOTH = 3
     HINT_PENALTY = 15
     HINT_INTEGRITY_PENALTY = 10
 

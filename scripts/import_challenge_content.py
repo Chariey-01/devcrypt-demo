@@ -32,6 +32,23 @@ CSV columns (header row required): name, input_data, expected_output, weight, vi
       confirmed schema, so it is always left NULL -- edit it later in the Agent Dashboard if
       you want custom per-test failure text.
 
+Optional metadata file (either file-set shape): boothN_<name>_meta.json, e.g.:
+    {
+      "pass_threshold": 70,
+      "bonus_points": 20,
+      "max_attempts": 3,
+      "time_limit_seconds": 1,
+      "difficulty": "medium",
+      "mission_time_limit_seconds": 300
+    }
+    All keys optional; only the keys present are applied, everything else on that booth's
+    Challenge/Mission stays as already configured. pass_threshold/bonus_points/max_attempts/
+    time_limit_seconds/difficulty apply to Challenge (difficulty must be "easy"/"medium"/"hard"
+    if given -- matches the same whitelist the Agent Dashboard enforces). mission_time_limit_seconds
+    applies to Mission.time_limit -- the one exception to "Mission fields are never touched"
+    below, since it's an explicit part of a challenge's own configured metadata (unlike title/
+    narrative/cipher_word, which stay untouched regardless).
+
 Pytest test file convention: GradingEngine._run_pytest_suite always writes the player's
 submitted code to a sandbox file literally named `submission.py`, so your test file must import
 the function under test as `from submission import <name>`. If your test file instead imports
@@ -44,13 +61,14 @@ is reported as an error instead of guessed at.
 
 What this does and does not touch:
     - Only Challenge.prompt, starter_code (pytest sets only), test_code (pytest sets only),
-      grading_mode (pytest sets only), and that Challenge's TestCase rows (CSV sets only) are
-      replaced.
-    - Mission fields (title, narrative, tagline, cipher_word, order_index, time_limit, status)
-      are never touched.
-    - Other Challenge fields (language, pass_threshold, max_attempts, bonus_points,
-      time_limit_seconds, hints, etc.) are never touched -- whatever is already configured on
-      that booth stays.
+      grading_mode (pytest sets only), that Challenge's TestCase rows (CSV sets only), and
+      whichever specific fields an optional _meta.json names, are replaced.
+    - Mission fields (title, narrative, tagline, cipher_word, order_index, status) are never
+      touched -- Mission.time_limit is the one exception, and only when a _meta.json explicitly
+      names mission_time_limit_seconds.
+    - Other Challenge fields (language, hints, etc.) are never touched, and pass_threshold/
+      bonus_points/max_attempts/time_limit_seconds/difficulty are only touched when a _meta.json
+      names them -- whatever is already configured on that booth otherwise stays.
     - Never touches Team/TeamMission/CodeSubmission/Fragment or any other player-progress table.
     - A booth_id with no existing Mission row is reported and skipped, not created -- this
       script only replaces content on booths that already exist (see scripts/seed.py for
@@ -71,6 +89,7 @@ Usage:
 import argparse
 import csv
 import glob
+import json
 import os
 import re
 import sys
@@ -87,6 +106,10 @@ BOOTH_FILENAME_RE = re.compile(r"^booth(\d+)", re.IGNORECASE)
 
 REQUIRED_CSV_COLUMNS = {"name", "expected_output"}
 KNOWN_CSV_COLUMNS = {"name", "input_data", "expected_output", "weight", "visibility"}
+
+CHALLENGE_INT_META_FIELDS = ("pass_threshold", "bonus_points", "max_attempts", "time_limit_seconds")
+KNOWN_META_KEYS = set(CHALLENGE_INT_META_FIELDS) | {"difficulty", "mission_time_limit_seconds"}
+VALID_DIFFICULTIES = ("easy", "medium", "hard")
 
 # Modules a test file might legitimately import besides the player's own code -- never
 # candidates for the "from X import ..." rewrite below, regardless of how many appear.
@@ -127,24 +150,33 @@ def normalize_test_module_import(test_code, booth_label):
 
 def discover_booth_files(content_dir):
     """Returns {booth_number: {"md": path_or_None, "csv": path_or_None, "starter": path_or_None,
-    "test": path_or_None}}."""
+    "test": path_or_None, "meta": path_or_None}}."""
     booths = {}
     for path in glob.glob(os.path.join(content_dir, "*")):
         filename = os.path.basename(path)
         stem, ext = os.path.splitext(filename)
         ext = ext.lower()
-        if ext not in (".md", ".csv", ".py"):
+        if ext not in (".md", ".csv", ".py", ".json"):
             continue
         match = BOOTH_FILENAME_RE.match(stem)
         if not match:
             continue
         booth_num = int(match.group(1))
-        entry = booths.setdefault(booth_num, {"md": None, "csv": None, "starter": None, "test": None})
+        entry = booths.setdefault(
+            booth_num, {"md": None, "csv": None, "starter": None, "test": None, "meta": None}
+        )
 
         if ext == ".md":
             key = "md"
         elif ext == ".csv":
             key = "csv"
+        elif ext == ".json":
+            if not stem.endswith("_meta"):
+                raise BoothFileSetError(
+                    f"booth{booth_num}: {filename} is a .json file but doesn't end in "
+                    f"'_meta.json' -- rename it so its role is unambiguous."
+                )
+            key = "meta"
         elif stem.endswith("_starter"):
             key = "starter"
         elif stem.endswith("_test"):
@@ -162,6 +194,48 @@ def discover_booth_files(content_dir):
             )
         entry[key] = path
     return booths
+
+
+def parse_meta_json(path):
+    """Returns a dict of validated {field: value} to apply -- only the keys actually present in
+    the file, so a booth's meta.json can set just one or two fields without disturbing the rest.
+    Raises BoothFileSetError with a clear message on any unrecognized key or invalid value."""
+    with open(path, encoding="utf-8") as f:
+        try:
+            raw = json.load(f)
+        except json.JSONDecodeError as e:
+            raise BoothFileSetError(f"{os.path.basename(path)}: invalid JSON ({e}).")
+    if not isinstance(raw, dict):
+        raise BoothFileSetError(f"{os.path.basename(path)}: expected a JSON object.")
+
+    unknown = set(raw) - KNOWN_META_KEYS
+    if unknown:
+        raise BoothFileSetError(
+            f"{os.path.basename(path)}: unrecognized key(s) {sorted(unknown)} -- "
+            f"expected only {sorted(KNOWN_META_KEYS)}."
+        )
+
+    meta = {}
+    for field in CHALLENGE_INT_META_FIELDS:
+        if field in raw:
+            try:
+                meta[field] = int(raw[field])
+            except (TypeError, ValueError):
+                raise BoothFileSetError(f"{os.path.basename(path)}: {field} must be an integer.")
+    if "mission_time_limit_seconds" in raw:
+        try:
+            meta["mission_time_limit_seconds"] = int(raw["mission_time_limit_seconds"])
+        except (TypeError, ValueError):
+            raise BoothFileSetError(f"{os.path.basename(path)}: mission_time_limit_seconds must be an integer.")
+    if "difficulty" in raw:
+        difficulty = raw["difficulty"]
+        if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
+            raise BoothFileSetError(
+                f"{os.path.basename(path)}: difficulty must be one of {VALID_DIFFICULTIES} or null, "
+                f"got {difficulty!r}."
+            )
+        meta["difficulty"] = difficulty
+    return meta
 
 
 def parse_test_cases_csv(path):
@@ -267,6 +341,8 @@ def build_plan(content_dir):
             if not prompt:
                 raise BoothFileSetError(f"{os.path.basename(entry['md'])}: file is empty.")
 
+            meta = parse_meta_json(entry["meta"]) if entry["meta"] else {}
+
             if has_csv:
                 test_cases = parse_test_cases_csv(entry["csv"])
                 plan.append(
@@ -278,6 +354,7 @@ def build_plan(content_dir):
                         "csv_path": entry["csv"],
                         "prompt": prompt,
                         "test_cases": test_cases,
+                        "meta": meta,
                     }
                 )
             else:
@@ -301,6 +378,7 @@ def build_plan(content_dir):
                         "prompt": prompt,
                         "starter_code": starter_code,
                         "test_code": test_code,
+                        "meta": meta,
                     }
                 )
         except BoothFileSetError as e:
@@ -352,6 +430,13 @@ def apply_plan(plan):
             # rows from a previous import so they don't linger unused.
             for old_tc in list(challenge.test_cases):
                 db.session.delete(old_tc)
+
+        meta = item.get("meta") or {}
+        for field in CHALLENGE_INT_META_FIELDS + ("difficulty",):
+            if field in meta:
+                setattr(challenge, field, meta[field])
+        if "mission_time_limit_seconds" in meta:
+            mission.time_limit = meta["mission_time_limit_seconds"]
 
     db.session.commit()
     return len(plan), total_test_cases
@@ -410,6 +495,8 @@ def main():
                     f"test_code <- {os.path.basename(item['test_path'])} "
                     f"({len(item['test_code'])} chars), grading_mode -> pytest"
                 )
+            if item.get("meta"):
+                print(f"    meta: {item['meta']}")
         print()
 
         if not args.yes:

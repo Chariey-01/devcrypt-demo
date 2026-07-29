@@ -532,6 +532,10 @@ document.addEventListener("DOMContentLoaded", () => {
         <p class="ops-value ok">${data.team.score}</p>
       </div>
       <div class="ops-panel">
+        <p class="ops-label">${icon("key", 14)} Hints Remaining — This Booth</p>
+        <p class="ops-value">${mission && mission.challenge ? mission.challenge.hints_available : "—"}</p>
+      </div>
+      <div class="ops-panel">
         <p class="ops-label">${icon("timer", 14)} This Booth — Time Left</p>
         <p class="ops-value ${timer.tier}">${timer.value}</p>
       </div>
