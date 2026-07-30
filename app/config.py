@@ -1,6 +1,7 @@
 import os
+from datetime import timedelta
 from pathlib import Path
-from dotenv import load_dotenv  
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -68,6 +69,15 @@ class Config:
     FINAL_FLAG_MISSION_IDS = [
         int(x) for x in (os.getenv("FINAL_FLAG_MISSION_IDS") or "").split(",") if x.strip()
     ]
+
+    # A team refreshing, closing a tab, or dropping WiFi mid-event must never be forced back to
+    # a moderator for a new key — all real progress is already server-side (Postgres). Default
+    # 8h comfortably spans a one-day event; override per-event via env without a redeploy.
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.getenv("SESSION_LIFETIME_HOURS", "8")))
+
+    # Flask-WTF's default (1hr) would expire a CSRF token on a team's tab left open mid-event —
+    # tie validity to the session lifetime above instead of a fixed short window.
+    WTF_CSRF_TIME_LIMIT = None
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

@@ -16,7 +16,7 @@
   async function api(method, url, body) {
     const res = await fetch(url, {
       method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...csrfHeader() },
       body: body ? JSON.stringify(body) : undefined,
     });
     let data = null;
@@ -506,8 +506,11 @@
         (l) => `
       <tr>
         <td>${escapeHtml(l.when)}</td>
+        <td>${escapeHtml(l.team || "—")}</td>
         <td>${escapeHtml(l.actor_role)}</td>
         <td>${escapeHtml(l.action)}</td>
+        <td>${escapeHtml(l.result || "—")}</td>
+        <td>${l.score_delta != null ? escapeHtml((l.score_delta > 0 ? "+" : "") + l.score_delta) : "—"}</td>
         <td>${escapeHtml(l.metadata || "—")}</td>
       </tr>`
       )
@@ -515,8 +518,8 @@
     el.innerHTML = `
       <div class="data-grid-wrap">
         <table class="data-table">
-          <thead><tr><th>When</th><th>Actor role</th><th>Action</th><th>Details</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="4" class="hint-text">No activity logged yet.</td></tr>`}</tbody>
+          <thead><tr><th>When</th><th>Team</th><th>Actor role</th><th>Action</th><th>Result</th><th>Score Δ</th><th>Details</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7" class="hint-text">No activity logged yet.</td></tr>`}</tbody>
         </table>
       </div>`;
   }

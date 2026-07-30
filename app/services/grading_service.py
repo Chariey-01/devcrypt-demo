@@ -1,3 +1,6 @@
+import logging
+import os
+import pwd
 import resource
 import subprocess
 import sys
@@ -6,6 +9,8 @@ import threading
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger("devcrypt.grading")
 
 # NOTE on gevent + subprocess: earlier this routed subprocess.run() through
 # gevent.get_hub().threadpool to avoid a suspected fork/greenlet interaction. That was wrong and
@@ -69,12 +74,54 @@ class GradingResult:
     passed_threshold: bool = False
 
 
+# Ships a sitecustomize.py the interpreter auto-imports at startup (see
+# app/sandbox/sitecustomize.py for what it does and why) by putting its directory on the
+# child's PYTHONPATH -- this is how the network block below is actually installed.
+_SANDBOX_DIR = str(Path(__file__).resolve().parent.parent / "sandbox")
+
+# Whether a privilege drop to a distinct, unprivileged user is even possible depends on whether
+# this process itself is root — only root has CAP_SETUID to become a different user. Logged
+# once at import time (not asserted, checked) so this is visible in the real deployment's boot
+# log without having to shell into the box. Spike-and-confirm, per the security hardening plan:
+# don't assume either answer.
+_RUNNING_AS_ROOT = os.getuid() == 0
+if _RUNNING_AS_ROOT:
+    logger.warning(
+        "grading subprocess parent runs as root (uid 0) -- dropping each submission to 'nobody' "
+        "before exec (see _set_limits)."
+    )
+else:
+    logger.info(
+        "grading subprocess parent does not run as root (uid=%s) -- this process cannot switch "
+        "a child to a different UID, so submission sandboxing here relies on rlimits + timeout "
+        "+ the application-layer network block only, not a genuine privilege drop.",
+        os.getuid(),
+    )
+
+
 def _set_limits():
     # Runs in the child process after fork, before exec — this is what actually confines it.
+    if _RUNNING_AS_ROOT:
+        # Only reached when the parent has root's CAP_SETUID (see _RUNNING_AS_ROOT above) --
+        # drop to 'nobody' (present on virtually every Linux base image) so the child is a
+        # genuinely different, unprivileged user, not just the same account with rlimits
+        # attached. Best-effort: if 'nobody' doesn't exist on this image, fall through to the
+        # same-UID rlimit-only confinement rather than crashing every submission.
+        try:
+            nobody = pwd.getpwnam("nobody")
+            os.setgroups([])
+            os.setgid(nobody.pw_gid)
+            os.setuid(nobody.pw_uid)
+        except (KeyError, PermissionError):
+            pass
     resource.setrlimit(resource.RLIMIT_CPU, (CPU_SECONDS_LIMIT, CPU_SECONDS_LIMIT))
     resource.setrlimit(resource.RLIMIT_AS, (ADDRESS_SPACE_BYTES_LIMIT, ADDRESS_SPACE_BYTES_LIMIT))
     resource.setrlimit(resource.RLIMIT_NPROC, (MAX_PROCESSES_LIMIT, MAX_PROCESSES_LIMIT))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def _sandbox_env():
+    return {"PATH": "/usr/bin:/bin", "PYTHONPATH": _SANDBOX_DIR, "PYTHONNOUSERSITE": "1"}
 
 
 class GradingEngine:
@@ -99,7 +146,7 @@ class GradingEngine:
                         text=True,
                         timeout=timeout_seconds,
                         cwd=tmp_dir,
-                        env={"PATH": "/usr/bin:/bin"},
+                        env=_sandbox_env(),
                         preexec_fn=_set_limits,
                     )
                 except subprocess.TimeoutExpired:
@@ -219,7 +266,7 @@ class GradingEngine:
                         text=True,
                         timeout=timeout_seconds,
                         cwd=tmp_dir,
-                        env={"PATH": "/usr/bin:/bin"},
+                        env=_sandbox_env(),
                         preexec_fn=_set_limits,
                     )
                 except subprocess.TimeoutExpired:

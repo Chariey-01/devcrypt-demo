@@ -20,11 +20,19 @@ const socket = ["player", "mod", "leaderboard"].includes(PAGE) ? io() : null;
 // leaving the player looking at a silently-frozen screen with no explanation.
 let consecutiveNetworkFailures = 0;
 
+// Shared by every fetch()-based api() helper on the site (this file's own api() below, plus
+// mod_admin.js's and agent.js's) -- Flask-WTF's CSRFProtect (app/extensions.py) checks this
+// header on every POST/PUT/PATCH/DELETE, since none of those requests are real <form> submits.
+function csrfHeader() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? { "X-CSRFToken": meta.content } : {};
+}
+
 async function api(url, options = {}) {
   let res;
   try {
     res = await fetch(url, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeader() },
       ...options,
     });
   } catch (err) {
@@ -45,6 +53,13 @@ async function api(url, options = {}) {
     data = await res.json();
   } catch (err) {
     data = {};
+  }
+  // A dead/expired team session (deleted team, or the cookie simply outlived the event) — mod
+  // and agent pages already get an HTML redirect for free from Flask-Login's own handling, so
+  // this only needs to cover the player/leaderboard poll loops, which would otherwise sit on a
+  // silently-frozen screen forever.
+  if (res.status === 401 && (PAGE === "player" || PAGE === "leaderboard")) {
+    window.location.href = "/auth/team-login";
   }
   return { ok: res.ok, status: res.status, data };
 }

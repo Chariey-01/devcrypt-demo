@@ -1,13 +1,25 @@
 from functools import wraps
 
-from flask import abort, redirect, session, url_for
+from flask import abort, jsonify, redirect, request, session, url_for
 from flask_login import current_user
+
+from .errors import wants_json
 
 
 def team_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
-        if not session.get("team_id"):
+        from .models import Team
+
+        team_id = session.get("team_id")
+        team = Team.query.get(team_id) if team_id else None
+        if team is None:
+            # Covers both "never logged in" and "cookie outlived the team" (deleted team,
+            # stale reference) — either way the session key is dead weight, drop it so it
+            # doesn't linger across a later login on the same browser.
+            session.pop("team_id", None)
+            if wants_json(request):
+                return jsonify({"error": "Your session has expired. Please log in again."}), 401
             return redirect(url_for("auth.team_login"))
         return view(*args, **kwargs)
 

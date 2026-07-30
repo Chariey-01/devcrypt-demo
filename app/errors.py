@@ -1,4 +1,5 @@
 from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask_wtf.csrf import CSRFError
 
 from .extensions import login_manager
 
@@ -35,3 +36,26 @@ def register_error_handlers(app):
         if wants_json(request):
             return jsonify({"error": message}), 403
         return render_template("errors/403.html", message=message), 403
+
+    @app.errorhandler(CSRFError)
+    def _csrf_error(_error):
+        # A stale/missing token — most commonly a tab left open across a full server
+        # redeploy, which rotates SECRET_KEY-derived signing state. Same wants_json split as
+        # every other handler here rather than Flask-WTF's default plain-text 400 body.
+        message = "Your form session expired — please refresh the page and try again."
+        if wants_json(request):
+            return jsonify({"error": message}), 400
+        flash(message, "error")
+        resp = redirect(request.referrer or url_for("home"))
+        resp.status_code = 400
+        return resp
+
+    @app.errorhandler(429)
+    def _rate_limited(_error):
+        message = "Too many attempts — please wait a moment before trying again."
+        if wants_json(request):
+            return jsonify({"error": message}), 429
+        flash(message, "error")
+        resp = redirect(request.referrer or url_for("home"))
+        resp.status_code = 429
+        return resp

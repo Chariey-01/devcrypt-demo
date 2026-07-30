@@ -17,7 +17,7 @@
     const isFormData = body instanceof FormData;
     const res = await fetch(url, {
       method,
-      headers: body && !isFormData ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(body && !isFormData ? { "Content-Type": "application/json" } : {}), ...csrfHeader() },
       body: isFormData ? body : body ? JSON.stringify(body) : undefined,
     });
     let data = null;

@@ -30,6 +30,15 @@ def _make_config(mission_ids, flag=REAL_FLAG):
         EVENT_SALT = TEST_SALT
         FINAL_FLAG_CIPHERTEXT = ciphertext
         FINAL_FLAG_MISSION_IDS = mission_ids
+        # Same overrides as conftest.py's TestConfig, and for the same reason: this test client
+        # doesn't do a real CSRF-token round trip or have a rate-limitable IP, and
+        # SESSION_COOKIE_SECURE (inherited from Config) is baked in from the *developer's* local
+        # .env DATABASE_URL at Config's class-body-evaluation time, not from the sqlite URI
+        # overridden here — without this, Talisman's force_https 302-redirects every login POST
+        # in this file before the session ever gets set.
+        WTF_CSRF_ENABLED = False
+        RATELIMIT_ENABLED = False
+        SESSION_COOKIE_SECURE = False
 
     return FinalFlagTestConfig
 

@@ -398,8 +398,18 @@ class EventLog(db.Model):
     # because SQLAlchemy's declarative base reserves `.metadata` on Model.
     event_metadata = db.Column("metadata", db.Text, nullable=True)
     logged_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Structured fields added for dispute-resolution reporting -- all nullable/additive so
+    # existing rows and existing .log() call sites that don't pass them keep working unchanged.
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=True)
+    ip_address = db.Column(db.String(45), nullable=True)  # long enough for IPv6
+    user_agent = db.Column(db.String(255), nullable=True)
+    result = db.Column(db.String(20), nullable=True)  # e.g. "passed" | "failed" | "soft_locked"
+    score_delta = db.Column(db.Integer, nullable=True)
 
     actor = db.relationship("User", backref="event_logs")
+    team = db.relationship("Team")
+
+    __table_args__ = (db.Index("ix_event_logs_team_id_logged_at", "team_id", "logged_at"),)
 
 
 class EventState(db.Model):
@@ -408,6 +418,10 @@ class EventState(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     status = db.Column(db.String(20), default="not_started")
     started_at = db.Column(db.DateTime, nullable=True)
+    # Set on pause(), cleared on the resuming start() -- lets start() compute exactly how long
+    # the event was paused and shift every in-progress TeamMission.started_at forward by that
+    # same duration, so a pause never eats into a team's remaining time.
+    paused_at = db.Column(db.DateTime, nullable=True)
     broadcast_message = db.Column(db.String(255), nullable=True)
     broadcast_at = db.Column(db.DateTime, nullable=True)
     name = db.Column(db.String(120), nullable=True)

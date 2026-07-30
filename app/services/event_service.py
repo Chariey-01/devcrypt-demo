@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from ..extensions import db
-from ..models import EventState
+from ..models import EventState, TeamMission
 from ..sockets import notify_global
 
 
@@ -33,8 +33,23 @@ class EventService:
 
     def start(self):
         state = self.get_state()
+        if state.status == "paused" and state.paused_at is not None:
+            # Resuming, not starting fresh -- give back exactly the wall-clock duration the
+            # event was paused for, to every mission still in progress, so a pause never eats
+            # into a team's remaining time. A team that hasn't reached a booth yet (started_at
+            # still NULL) is untouched -- its clock starts for real the next time it polls,
+            # same as MissionService.get_or_create_team_mission handles for a not-yet-started
+            # event.
+            pause_duration = datetime.utcnow() - state.paused_at
+            in_progress = TeamMission.query.filter(
+                TeamMission.submitted_at.is_(None), TeamMission.started_at.isnot(None)
+            ).all()
+            for team_mission in in_progress:
+                team_mission.started_at += pause_duration
+            state.paused_at = None
+        else:
+            state.started_at = datetime.utcnow()
         state.status = "running"
-        state.started_at = datetime.utcnow()
         db.session.commit()
         notify_global("event_start")
         return state
@@ -42,6 +57,7 @@ class EventService:
     def pause(self):
         state = self.get_state()
         state.status = "paused"
+        state.paused_at = datetime.utcnow()
         db.session.commit()
         notify_global("event_pause")
         return state

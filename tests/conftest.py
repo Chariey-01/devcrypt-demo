@@ -17,6 +17,21 @@ class TestConfig(Config):
     # (see test_final_flag_not_configured_returns_404, which specifically asserts the unset case).
     FINAL_FLAG_CIPHERTEXT = None
     FINAL_FLAG_MISSION_IDS = []
+    # The test client posts forms/JSON directly, with no browser-driven CSRF-token round trip
+    # and no real per-client IP to rate-limit against -- both are exercised by their own
+    # dedicated tests (test_csrf.py, test_rate_limiting.py) using an app instance that
+    # re-enables them explicitly. Standard Flask-WTF/Flask-Limiter testing practice.
+    WTF_CSRF_ENABLED = False
+    RATELIMIT_ENABLED = False
+    # Config.SESSION_COOKIE_SECURE is computed once, at Config's own class-body evaluation time,
+    # from *its* SQLALCHEMY_DATABASE_URI (i.e. whatever DATABASE_URL is in the developer's local
+    # .env -- often a real Postgres URL for local QA against a shared dev DB). Overriding
+    # SQLALCHEMY_DATABASE_URI here to sqlite (above) does NOT retroactively recompute that
+    # inherited class attribute, so without this explicit override tests would inherit
+    # SESSION_COOKIE_SECURE=True from whatever the developer's .env happens to point at --
+    # and Talisman's force_https (app/__init__.py) is keyed off exactly this flag, which was
+    # 302-redirecting every plain-http test-client request before this line was added.
+    SESSION_COOKIE_SECURE = False
 
 
 @pytest.fixture

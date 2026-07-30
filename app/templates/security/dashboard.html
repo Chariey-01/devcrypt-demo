@@ -8,6 +8,7 @@
     <span class="pill">{{ icon('fingerprint', 13) }} Security Officer</span>
     <span class="pill"><span class="status-dot"></span> Audit Log</span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>
@@ -33,6 +34,7 @@
             <span class="badge badge-passed">{{ icon('check', 11) }} Stamped</span>
             {% else %}
             <form method="post" action="{{ url_for('security.issue_stamp') }}" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="team_id" value="{{ team.id }}">
               <input type="hidden" name="checkpoint_id" value="{{ checkpoint_id }}">
               <button type="submit">{{ icon('shield-check', 13) }} Issue Clearance</button>

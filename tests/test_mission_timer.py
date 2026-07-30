@@ -4,7 +4,7 @@ from app.extensions import db
 from app.models import Challenge, EventState, Mission, Team, TeamMission, TestCase, User
 
 
-def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_type="code"):
+def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_type="code", event_status="running"):
     with app.app_context():
         agent = User(email="agent@test.local", role="booth_agent")
         agent.set_password("pw")
@@ -13,7 +13,7 @@ def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_typ
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([agent, gm, team])
-        db.session.add(EventState(status="running"))
+        db.session.add(EventState(status=event_status))
         db.session.commit()
 
         mission = Mission(
@@ -162,3 +162,124 @@ def test_game_master_reset_mission_also_resets_timer(client, app):
         assert tm.grading_status is None
         assert tm.submission_text is None
         assert tm.attempts == 0
+
+
+def test_mission_timer_does_not_start_before_the_event_is_running(client, app):
+    # The actual "overdue immediately after login" bug: a team browsing the dashboard before
+    # the Game Master starts the event used to stamp started_at right away, so the clock had
+    # already been running (and could already be past time_limit) the moment the event began.
+    mission_id, team_id = _setup_timed_mission(app, time_limit=60, event_status="not_started")
+    _login_team(client)
+    res = client.get("/missions/status")
+    assert res.get_json()["mission"]["started_at"] is None
+
+    with app.app_context():
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        assert tm is not None  # row exists (attempts/hints tracked) even though the clock hasn't started
+        assert tm.started_at is None
+
+
+def test_mission_timer_starts_on_the_first_poll_once_the_event_goes_running(client, app):
+    mission_id, team_id = _setup_timed_mission(app, time_limit=60, event_status="not_started")
+    _login_team(client)
+    client.get("/missions/status")  # creates the row, event not running yet -> started_at stays None
+
+    with app.app_context():
+        state = EventState.query.get(1)
+        state.status = "running"
+        db.session.commit()
+
+    res = client.get("/missions/status")
+    assert res.get_json()["mission"]["started_at"] is not None
+    with app.app_context():
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        assert tm.started_at is not None
+
+
+def test_pausing_and_resuming_the_event_preserves_remaining_time(client, app):
+    mission_id, team_id = _setup_timed_mission(app, time_limit=300)
+    _login_team(client)
+    client.get("/missions/status")
+    _start_mission_and_backdate(app, team_id, mission_id, seconds_ago=30)
+
+    gm_client = app.test_client()
+    _login_staff(gm_client, "gm@test.local")
+    gm_client.post("/mod/event/pause")
+
+    with app.app_context():
+        state = EventState.query.get(1)
+        assert state.status == "paused"
+        assert state.paused_at is not None
+        # Backdate the pause itself so the resume below has a deterministic, non-zero gap to
+        # shift started_at by, without sleeping in the test.
+        state.paused_at = datetime.utcnow() - timedelta(seconds=20)
+        db.session.commit()
+        started_before_resume = TeamMission.query.filter_by(
+            team_id=team_id, mission_id=mission_id
+        ).first().started_at
+
+    gm_client.post("/mod/event/start")
+
+    with app.app_context():
+        state = EventState.query.get(1)
+        assert state.status == "running"
+        assert state.paused_at is None
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        shift = (tm.started_at - started_before_resume).total_seconds()
+        assert 18 <= shift <= 22  # shifted forward by ~the paused duration, not reset/left alone
+
+
+def test_pausing_does_not_stamp_a_mission_a_team_has_not_reached_yet(client, app):
+    # A team who hasn't polled /missions/status at all during the pause has no TeamMission row
+    # to shift -- resuming must not retroactively create/start one for them.
+    mission_id, team_id = _setup_timed_mission(app, time_limit=300, event_status="paused")
+    with app.app_context():
+        state = EventState.query.get(1)
+        state.paused_at = datetime.utcnow() - timedelta(seconds=10)
+        db.session.commit()
+
+    gm_client = app.test_client()
+    _login_staff(gm_client, "gm@test.local")
+    gm_client.post("/mod/event/start")
+
+    with app.app_context():
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        assert tm is None
+
+
+def test_extend_timer_grants_extra_time_to_a_single_team(client, app):
+    mission_id, team_id = _setup_timed_mission(app, time_limit=60)
+    _login_team(client)
+    client.get("/missions/status")
+    _start_mission_and_backdate(app, team_id, mission_id, seconds_ago=50)
+
+    with app.app_context():
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        team_mission_id = tm.id
+        started_before = tm.started_at
+
+    gm_client = app.test_client()
+    _login_staff(gm_client, "gm@test.local")
+    res = gm_client.post(f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"})
+    assert res.status_code == 302
+
+    with app.app_context():
+        tm = TeamMission.query.get(team_mission_id)
+        assert (tm.started_at - started_before).total_seconds() == 300
+
+
+def test_extend_timer_is_a_no_op_once_the_mission_is_submitted(client, app):
+    mission_id, team_id = _setup_timed_mission(app, time_limit=60)
+    _login_team(client)
+    client.get("/missions/status")
+    _start_mission_and_backdate(app, team_id, mission_id, seconds_ago=10)
+    client.post("/missions/challenge/submit", json={"code": "print(int(input()) * 2)"})
+
+    with app.app_context():
+        tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
+        team_mission_id = tm.id
+
+    gm_client = app.test_client()
+    _login_staff(gm_client, "gm@test.local")
+    res = gm_client.post(f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"})
+    assert res.status_code == 409

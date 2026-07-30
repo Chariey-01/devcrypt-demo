@@ -10,6 +10,7 @@
     <span id="team-integrity" class="pill"></span>
     <span id="team-hints" class="pill"></span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>

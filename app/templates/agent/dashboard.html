@@ -7,6 +7,7 @@
     <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
     <span class="pill">{{ icon('flame-kindling', 13) }} Agent Dashboard</span>
     <form method="post" action="{{ url_for('auth.logout') }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="ghost" type="submit">{{ icon('unlock', 13) }} Terminate Session</button>
     </form>
   </header>

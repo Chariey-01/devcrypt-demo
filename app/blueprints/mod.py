@@ -7,7 +7,7 @@ from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_t
 from flask_login import current_user, login_required
 
 from ..decorators import roles_required
-from ..extensions import db
+from ..extensions import db, limiter
 from ..models import (
     Challenge,
     CodeSubmission,
@@ -108,10 +108,17 @@ def data():
 def team_detail(team_id):
     team = Team.query.get_or_404(team_id)
     tm_ids = [tm.id for tm in team.team_missions]
-    logs = EventLog.query.filter(
+    # EventLog.team_id == team.id covers every row logged since the structured-audit-fields
+    # migration; the target_type/target_id clause is kept alongside it (as an OR, not a
+    # replacement) so older rows -- logged before team_id existed and never backfilled -- still
+    # show up here too.
+    legacy_match = (
         (EventLog.target_type == "team_mission") & (EventLog.target_id.in_(tm_ids))
         if tm_ids
         else (EventLog.target_type == "team") & (EventLog.target_id == team.id)
+    )
+    logs = EventLog.query.filter(
+        db.or_(EventLog.team_id == team.id, legacy_match)
     ).order_by(EventLog.logged_at.desc()).all()
     return render_template("mod/team_detail.html", team=team, logs=logs, table_id="log-grid")
 
@@ -129,6 +136,9 @@ def activity():
                     "actor_role": log.actor_role,
                     "action": log.action,
                     "metadata": log.event_metadata,
+                    "team": log.team.name if log.team_id else None,
+                    "result": log.result,
+                    "score_delta": log.score_delta,
                 }
                 for log in logs
             ]
@@ -165,7 +175,7 @@ def create_team():
         return jsonify({"error": "A team with that name already exists."}), 409
     key = generate_team_key()
     team = team_repo.create_team(name, key)
-    audit_service.log(current_user, "game_master", "team_created", "team", team.id)
+    audit_service.log(current_user, "game_master", "team_created", "team", team.id, team_id=team.id)
     db.session.commit()
     return jsonify({"id": team.id, "name": team.name, "key": key}), 201
 
@@ -184,7 +194,10 @@ def rename_team(team_id):
         return jsonify({"error": "A team with that name already exists."}), 409
     old_name = team.name
     team.name = new_name
-    audit_service.log(current_user, "game_master", "team_renamed", "team", team.id, metadata=f"{old_name} -> {new_name}")
+    audit_service.log(
+        current_user, "game_master", "team_renamed", "team", team.id,
+        team_id=team.id, metadata=f"{old_name} -> {new_name}",
+    )
     db.session.commit()
     notify_mod("team_renamed")
     return jsonify({"id": team.id, "name": team.name})
@@ -207,7 +220,10 @@ def delete_team(team_id):
 @roles_required("game_master")
 def reset_team(team_id):
     team = Team.query.get_or_404(team_id)
-    audit_service.log(current_user, "game_master", "team_progress_reset", "team", team.id, metadata=team.name)
+    audit_service.log(
+        current_user, "game_master", "team_progress_reset", "team", team.id,
+        team_id=team.id, metadata=team.name,
+    )
     admin_reset_service.reset_team(team)
     notify_team(team.id, "team_reset")
     notify_mod("team_reset")
@@ -270,7 +286,7 @@ def set_starting_booth(team_id):
     if mission_id:
         Mission.query.get_or_404(mission_id)
     team.starting_mission_id = mission_id or None
-    audit_service.log(current_user, "game_master", "starting_booth_set", "team", team.id)
+    audit_service.log(current_user, "game_master", "starting_booth_set", "team", team.id, team_id=team.id)
     db.session.commit()
     return jsonify({"ok": True, "starting_mission_id": team.starting_mission_id})
 
@@ -310,6 +326,7 @@ def distribute_booths():
 @mod_bp.route("/credentials/generate", methods=["POST"])
 @login_required
 @roles_required("game_master")
+@limiter.limit("30 per minute")
 def generate_credential():
     data = request.get_json(silent=True) or {}
     kind = data.get("kind")
@@ -319,6 +336,10 @@ def generate_credential():
 
     if kind == "team":
         team = Team.query.filter_by(name=name).first()
+        # Distinguish a moderator reissuing an existing team's key (the live-event recovery
+        # path that prompted this audit work) from creating a brand-new team, before
+        # team_repo.create_team/set_key below changes which of those is still true.
+        reissuing = team is not None
         secret = generate_team_key()
         if team is None:
             team = team_repo.create_team(name, secret)
@@ -345,7 +366,11 @@ def generate_credential():
     else:
         return jsonify({"error": "kind must be 'team', 'game_master', 'booth_agent', or 'security_officer'."}), 400
 
-    audit_service.log(current_user, "game_master", "credentials_generated", metadata=f"{kind}:{name}")
+    if kind == "team":
+        action = "team_key_reissued" if reissuing else "team_created_with_key"
+        audit_service.log(current_user, "game_master", action, "team", team.id, team_id=team.id, metadata=name)
+    else:
+        audit_service.log(current_user, "game_master", "credentials_generated", metadata=f"{kind}:{name}")
     db.session.commit()
 
     qr_data_uri = None
@@ -509,7 +534,8 @@ def confirm_final_flag(team_id):
     confirmation.confirmed_by = current_user.id
     confirmation.confirmed_at = datetime.utcnow()
     audit_service.log(
-        current_user, "game_master", "final_flag_confirmed", "team", team_id, metadata=confirmation.team.name
+        current_user, "game_master", "final_flag_confirmed", "team", team_id,
+        team_id=team_id, metadata=confirmation.team.name,
     )
     db.session.commit()
     notify_team(team_id, "final_flag_confirmed")
@@ -537,7 +563,8 @@ def override_score(team_mission_id):
     team_mission.score = new_score
     team_mission.team.score = max(0, team_mission.team.score + delta)
     audit_service.log(
-        current_user, "game_master", "score_override", "team_mission", team_mission.id, metadata=str(new_score)
+        current_user, "game_master", "score_override", "team_mission", team_mission.id,
+        team_id=team_mission.team_id, score_delta=delta, metadata=str(new_score),
     )
     db.session.commit()
     notify_team(team_mission.team_id, "score_override")
@@ -558,10 +585,29 @@ def reset_mission(team_mission_id):
     team_mission.attempts = 0
     team_mission.submission_text = None
     mission_service.unfreeze_submission(team_mission)
-    audit_service.log(current_user, "game_master", "mission_reset", "team_mission", team_mission.id)
+    audit_service.log(
+        current_user, "game_master", "mission_reset", "team_mission", team_mission.id,
+        team_id=team_mission.team_id,
+    )
     db.session.commit()
     notify_team(team_mission.team_id, "mission_reset")
     notify_mod("mission_reset")
+    return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
+
+
+@mod_bp.route("/team-mission/<int:team_mission_id>/extend-timer", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def extend_timer(team_mission_id):
+    team_mission = TeamMission.query.get_or_404(team_mission_id)
+    try:
+        seconds = int(request.form.get("seconds"))
+    except (TypeError, ValueError):
+        abort(400)
+    if seconds <= 0:
+        abort(400)
+    if not mission_service.extend_timer(team_mission, seconds, actor=current_user, actor_role="game_master"):
+        abort(409)
     return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
 
 

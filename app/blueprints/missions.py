@@ -195,7 +195,9 @@ def status():
     }
 
     if mission is not None:
-        team_mission = mission_service.get_or_create_team_mission(team, mission)
+        team_mission = mission_service.get_or_create_team_mission(
+            team, mission, event_running=state.status == "running"
+        )
         db.session.commit()
 
         remaining_penalty = None
@@ -409,6 +411,8 @@ def submit_challenge():
             "submission_graded",
             "team_mission",
             team_mission.id,
+            team_id=team.id,
+            result="passed" if grading_result.passed_threshold else "failed",
             metadata=f"{team.name}: {'passed' if grading_result.passed_threshold else 'failed'} "
             f"({grading_result.percent_score}%)",
         )
@@ -496,6 +500,11 @@ def request_hint():
 
     db.session.refresh(team, with_for_update=True)
     scoring_service.apply_hint_penalty(team, team_mission)
+    audit_service.log(
+        None, "team", "hint_requested", "team_mission", team_mission.id,
+        team_id=team.id, score_delta=-ScoringService.HINT_PENALTY,
+        metadata=f"{team.name}: hint {team_mission.hints_taken} of {mission.title}",
+    )
     db.session.commit()
     revealed = _revealed_hints(mission.challenge, team_mission)
     return jsonify(
@@ -581,6 +590,8 @@ def run_visible_tests():
         "visible_tests_run",
         "team_mission",
         team_mission.id,
+        team_id=team.id,
+        result="passed" if grading_result.passed_threshold else "failed",
         metadata=f"{team.name}: {grading_result.passed_tests}/{grading_result.total_tests} visible tests passed",
     )
     db.session.commit()
@@ -667,7 +678,9 @@ def final_flag():
     if confirmation is None:
         confirmation = FinalFlagConfirmation(team_id=team.id)
         db.session.add(confirmation)
-        audit_service.log(None, "team", "final_flag_requested", "team", team.id, metadata=team.name)
+        audit_service.log(
+            None, "team", "final_flag_requested", "team", team.id, team_id=team.id, metadata=team.name
+        )
         db.session.commit()
         notify_mod("final_flag_requested")
 
@@ -724,6 +737,8 @@ def _reconstruct_final_flag(team, required_mission_ids):
             )
             raise FinalFlagReconstructionError("Final flag could not be verified — notify a Game Master.", 500)
         raise FinalFlagReconstructionError("Final flag is not configured for this event yet.", 404)
-    audit_service.log(None, "team", "final_flag_reconstructed", "team", team.id, metadata=team.name)
+    audit_service.log(
+        None, "team", "final_flag_reconstructed", "team", team.id, team_id=team.id, metadata=team.name
+    )
     db.session.commit()
     return flag

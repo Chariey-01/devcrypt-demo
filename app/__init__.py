@@ -19,10 +19,11 @@ import logging
 import os
 
 from flask import Flask, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .errors import register_error_handlers
-from .extensions import bcrypt, db, login_manager, migrate, socketio
+from .extensions import bcrypt, csrf, db, limiter, login_manager, migrate, socketio, talisman
 from .blueprints.auth import auth_bp
 from .blueprints.missions import missions_bp
 from .blueprints.scoring import scoring_bp
@@ -54,6 +55,13 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Railway (and any platform fronting the app with a TLS-terminating proxy) sits in front of
+    # this single gunicorn worker, so request.remote_addr would otherwise always be the proxy's
+    # own IP — wrong for both audit-log IP capture (app/services/audit_service.py) and
+    # rate-limit keying (Flask-Limiter, below). x_for=1 trusts exactly one hop of
+    # X-Forwarded-For, matching Railway's single reverse-proxy topology.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+
     db.init_app(app)
     if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
         # SQLite does not enforce foreign key constraints by default, unlike Postgres (what
@@ -75,6 +83,27 @@ def create_app(config_class=Config):
     socketio.init_app(app, cors_allowed_origins=app.config["SOCKETIO_CORS_ALLOWED_ORIGINS"])
     bcrypt.init_app(app)
     login_manager.init_app(app)
+    csrf.init_app(app)
+    limiter.init_app(app)
+    talisman.init_app(
+        app,
+        # Mirrors the same SQLite(local/LAN)-vs-Postgres(production) split already used by
+        # SESSION_COOKIE_SECURE — forcing HTTPS on the venue's plain-HTTP LAN demo path would
+        # break every team/staff login there.
+        force_https=app.config["SESSION_COOKIE_SECURE"],
+        session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],
+        content_security_policy={
+            "default-src": "'self'",
+            "script-src": "'self'",
+            # Inline style="" attributes and JS-set progress-bar widths are used throughout the
+            # templates -- eliminating them is a larger CSS refactor, deliberately out of scope
+            # here. script-src above stays strict with zero exceptions instead.
+            "style-src": ["'self'", "'unsafe-inline'"],
+            "img-src": ["'self'", "data:"],  # data: URIs used by generate_credential's QR PNG
+            "connect-src": "'self'",
+            "font-src": "'self'",
+        },
+    )
 
     app.jinja_env.globals["icon"] = icon
 

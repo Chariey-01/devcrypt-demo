@@ -1,6 +1,6 @@
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
@@ -90,18 +90,50 @@ class MissionService:
         team_mission.submission_status = None
         team_mission.grading_status = None
 
-    def get_or_create_team_mission(self, team, mission):
+    def get_or_create_team_mission(self, team, mission, event_running=True):
+        # event_running gates the timer, not the row's existence -- a team browsing the
+        # dashboard before the Game Master starts (or during a pause) still needs its
+        # TeamMission row (attempts/hints/knowledge answers persist across that wait), it just
+        # must not have its clock ticking yet. Stamping started_at unconditionally here used to
+        # be exactly why missions showed "overdue" the instant a team logged in: the row got
+        # created (and the clock started) on first page load, long before the event actually
+        # began.
         team_mission = TeamMission.query.filter_by(team_id=team.id, mission_id=mission.id).first()
         if not team_mission:
             team_mission = TeamMission(
                 team_id=team.id,
                 mission_id=mission.id,
                 status="in_progress",
-                started_at=datetime.utcnow(),
+                started_at=datetime.utcnow() if event_running else None,
             )
             db.session.add(team_mission)
+            db.session.flush()  # assigns team_mission.id for the audit log below
+            self.audit.log(
+                None, "team", "mission_opened", "team_mission", team_mission.id,
+                team_id=team.id, metadata=f"{team.name}: {mission.title}",
+            )
+            db.session.commit()
+        elif team_mission.started_at is None and event_running and team_mission.submitted_at is None:
+            # Row already existed (created while the event wasn't running yet), and this is the
+            # first poll since it actually went live -- start the clock for real now.
+            team_mission.started_at = datetime.utcnow()
             db.session.commit()
         return team_mission
+
+    def extend_timer(self, team_mission, seconds, actor=None, actor_role="game_master"):
+        # Narrow moderator recovery lever for a single team whose own session died mid-event
+        # while everyone else kept playing -- a global EventService.pause() would penalize
+        # every other team's clock too, which isn't the right fix for one team's bad luck.
+        if team_mission.started_at is None or team_mission.submitted_at is not None:
+            return False
+        team_mission.started_at += timedelta(seconds=seconds)
+        self.audit.log(
+            actor, actor_role, "timer_extended", "team_mission", team_mission.id,
+            team_id=team_mission.team_id, metadata=f"+{seconds}s",
+        )
+        db.session.commit()
+        notify_team(team_mission.team_id, "timer_extended")
+        return True
 
     def assign_knowledge_subset(self, team_mission, mission, pool_size=KNOWLEDGE_CHECK_POOL_SIZE):
         # Chosen once per team per booth, then persisted -- every later call (a page reload, a
@@ -216,7 +248,10 @@ class MissionService:
             next_mission, _ = self.current_mission_for(team, missions)
             team.booth_current = next_mission.id if next_mission else None
 
-            self.audit.log(actor, actor_role, f"mission_{status}", "team_mission", team_mission.id)
+            self.audit.log(
+                actor, actor_role, f"mission_{status}", "team_mission", team_mission.id,
+                team_id=team.id, result=status, score_delta=team_mission.score,
+            )
             db.session.commit()
         except IntegrityError:
             # Concurrent duplicate: another request for the same team/mission committed first
@@ -262,7 +297,10 @@ class MissionService:
         next_mission, _ = self.current_mission_for(team, missions)
         team.booth_current = next_mission.id if next_mission else None
 
-        self.audit.log(actor, actor_role, "mission_soft_locked", "team_mission", team_mission.id)
+        self.audit.log(
+            actor, actor_role, "mission_soft_locked", "team_mission", team_mission.id,
+            team_id=team.id, result="soft_locked", score_delta=team_mission.score,
+        )
         db.session.commit()
 
         notify_team(team.id, "mission_result")

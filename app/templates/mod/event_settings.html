@@ -13,6 +13,8 @@
     published missions — manage booths from the Agent Dashboard or booth assignment, not here).</p>
 
   <form method="post" class="auth-form" style="max-width:32rem;">
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Event name
       <input type="text" name="name" value="{{ state.name or '' }}" placeholder="e.g. DevCrypt Career Fair 2026">
     </label>

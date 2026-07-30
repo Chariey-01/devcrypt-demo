@@ -1,4 +1,5 @@
 <form method="post" action="{{ url_for('auth.team_login') }}" class="auth-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label for="name">Team name</label>
   <input id="name" name="name" type="text" autocomplete="username" required autofocus>
 
