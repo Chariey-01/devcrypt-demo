@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventLog, EventState, Hint, Mission, Team, User
+from app.models import Challenge, EventLog, Event, Hint, Mission, Team, User
 
 
 def _login_gm(client):
@@ -21,7 +21,7 @@ def _setup_mission_with_hints(app, hint_count=1):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([gm, team])
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(

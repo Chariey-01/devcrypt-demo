@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TeamMission, TestCase, User
+from app.models import Challenge, Event, Mission, Team, TeamMission, TestCase, User
 
 
 def _setup(app, soft_lock_min_attempts=1):
@@ -9,7 +9,7 @@ def _setup(app, soft_lock_min_attempts=1):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([gm, team])
-        db.session.add(EventState(status="running", soft_lock_min_attempts=soft_lock_min_attempts))
+        db.session.add(Event(status="running", soft_lock_min_attempts=soft_lock_min_attempts))
         db.session.commit()
 
         mission = Mission(

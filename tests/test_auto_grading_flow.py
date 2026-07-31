@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventLog, EventState, Mission, Team, TeamMission, TestCase, User
+from app.models import Challenge, EventLog, Event, Mission, Team, TeamMission, TestCase, User
 
 
 def _setup_auto_graded_mission(app):
@@ -9,7 +9,7 @@ def _setup_auto_graded_mission(app):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([agent, team])
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(
@@ -82,7 +82,7 @@ def _setup_five_case_mission(app, pass_threshold=None):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add(team)
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(

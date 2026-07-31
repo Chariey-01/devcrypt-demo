@@ -18,7 +18,7 @@ def leaderboard():
 
 @leaderboard_bp.route("/data")
 def data():
-    if not event_service.get_state().leaderboard_public:
+    if not event_service.get_active_event().leaderboard_public:
         return jsonify({"hidden": True, "leaderboard": []})
 
     teams = Team.query.all()

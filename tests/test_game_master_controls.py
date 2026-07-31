@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TeamMember, TeamMission, User
+from app.models import Challenge, Event, Mission, Team, TeamMember, TeamMission, User
 
 
 def _login_gm(client, app):
@@ -13,7 +13,7 @@ def _login_gm(client, app):
 
 def _get_status(app):
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         return state.status if state else "draft"  # lazily created on first get_state() call
 
 
@@ -45,7 +45,7 @@ def test_event_lifecycle_routes_require_game_master(client, app):
         assert client.post(path).status_code in (302, 401, 403)
     with app.app_context():
         # Never actually transitioned without auth.
-        assert EventState.query.get(1) is None or EventState.query.get(1).status == "draft"
+        assert Event.query.get(1) is None or Event.query.get(1).status == "draft"
 
 
 def test_pausing_the_event_blocks_hint_requests_and_resuming_restores_them(client, app):

@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Hint, Mission, Team, TestCase, User
+from app.models import Challenge, Event, Hint, Mission, Team, TestCase, User
 
 
 def _login_gm(client):
@@ -22,7 +22,7 @@ def _setup_auto_graded_mission(app, hint_limit=3, leaderboard_public=True):
         team.set_key("ALPHA01")
         db.session.add_all([gm, team])
         db.session.add(
-            EventState(
+            Event(
                 status="running",
                 hint_limit=hint_limit,
                 leaderboard_public=leaderboard_public,
@@ -140,7 +140,7 @@ def test_event_settings_get_and_post(client, app):
     assert res.status_code == 302
 
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         assert state.name == "Career Fair 2026"
         assert state.hint_limit == 5
         assert state.leaderboard_public is True

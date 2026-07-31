@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TeamMission
+from app.models import Challenge, Event, Mission, Team, TeamMission
 
 
 def _setup_flag_mission(app, max_attempts=1):
@@ -7,7 +7,7 @@ def _setup_flag_mission(app, max_attempts=1):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add(team)
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(

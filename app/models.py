@@ -17,6 +17,12 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
+    # NULL = not locked to one event -- the founding Game Master accounts from before
+    # multi-event support stay NULL (matches today's reality of one organizer running
+    # everything across events). A staff account created for a specific event going forward
+    # can be scoped here; Booth Agents/Security Officers typically will be, since they're
+    # tied to one event's booths in practice.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(20), nullable=False)
@@ -29,6 +35,7 @@ class User(UserMixin, db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     last_login_at = db.Column(db.DateTime, nullable=True)
 
+    event = db.relationship("Event")
     teams = db.relationship("Team", secondary=team_players, back_populates="players")
 
     def set_password(self, raw_password):
@@ -42,6 +49,11 @@ class Team(db.Model):
     __tablename__ = "teams"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Nullable for now (Phase 1a) -- backfilled to the one existing Event by the migration, and
+    # every current row necessarily belongs to it. Becomes NOT NULL once multi-event scoping is
+    # proven out (Phase 1d). Team.name's uniqueness is still global at this stage; it becomes a
+    # composite (event_id, name) constraint in the same later phase.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
     key_hash = db.Column(db.String(128), unique=True, nullable=False)
     score = db.Column(db.Integer, default=0)
@@ -64,6 +76,7 @@ class Team(db.Model):
     # team at a specific booth first.
     starting_mission_id = db.Column(db.Integer, db.ForeignKey("missions.id"), nullable=True)
 
+    event = db.relationship("Event")
     players = db.relationship("User", secondary=team_players, back_populates="teams")
     current_mission = db.relationship("Mission", foreign_keys=[booth_current])
     starting_mission = db.relationship("Mission", foreign_keys=[starting_mission_id])
@@ -93,6 +106,10 @@ class Mission(db.Model):
     __tablename__ = "missions"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Nullable for now (Phase 1a), backfilled to the one existing Event -- see Team.event_id for
+    # the same rationale. Once this is scoped (Phase 1b), booth_id's next-number logic in
+    # app/blueprints/agent.py needs to compute its max *within* an event, not globally.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
     booth_id = db.Column(db.Integer, nullable=True)
     title = db.Column(db.String(120), nullable=False)
     type = db.Column(db.String(40), nullable=False)
@@ -110,6 +127,7 @@ class Mission(db.Model):
     # created before this field existed stays visible with zero behavior change) | "archived".
     status = db.Column(db.String(20), default="published", nullable=False)
 
+    event = db.relationship("Event")
     evidence_files = db.relationship("EvidenceFile", backref="mission", cascade="all, delete-orphan")
     challenges = db.relationship("Challenge", backref="mission", cascade="all, delete-orphan")
     knowledge_questions = db.relationship(
@@ -405,17 +423,32 @@ class EventLog(db.Model):
     user_agent = db.Column(db.String(255), nullable=True)
     result = db.Column(db.String(20), nullable=True)  # e.g. "passed" | "failed" | "soft_locked"
     score_delta = db.Column(db.Integer, nullable=True)
+    # Added for multi-event support -- set directly rather than derived via team.event_id,
+    # since plenty of rows (staff/agent actions) have no team at all but still need to show up
+    # in the right event's activity feed.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
 
     actor = db.relationship("User", backref="event_logs")
     team = db.relationship("Team")
+    event = db.relationship("Event")
 
     __table_args__ = (db.Index("ix_event_logs_team_id_logged_at", "team_id", "logged_at"),)
 
 
-class EventState(db.Model):
-    __tablename__ = "event_state"
+class Event(db.Model):
+    """A single Career Fair / Cyber Week / training run. Was `EventState`, a hardcoded
+    singleton (`id=1`) before multi-event support -- this table now holds one row per event,
+    and the rename preserves the existing row (and its id) via an in-place table rename rather
+    than a new table + data migration. See EventService.get_active_event() for how "the one
+    live event" is resolved now that more than one row can exist."""
+
+    __tablename__ = "events"
 
     id = db.Column(db.Integer, primary_key=True)
+    # Display-only for now (Phase 1a) -- not yet enforced against `status` transitions or shown
+    # anywhere. Wired up once Event CRUD (Phase 1c) lets a Game Master actually set them.
+    start_date = db.Column(db.DateTime, nullable=True)
+    end_date = db.Column(db.DateTime, nullable=True)
     status = db.Column(db.String(20), default="not_started")
     started_at = db.Column(db.DateTime, nullable=True)
     # Set on pause(), cleared on the resuming start() -- lets start() compute exactly how long

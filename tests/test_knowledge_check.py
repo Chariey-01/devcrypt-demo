@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models import (
     Challenge,
-    EventState,
+    Event,
     KnowledgeOption,
     KnowledgeQuestion,
     Mission,
@@ -27,7 +27,7 @@ def _setup_mission_with_challenge(app):
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([agent, team])
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(

@@ -51,7 +51,7 @@ def health():
 @login_required
 @roles_required("game_master")
 def dashboard():
-    return render_template("mod/dashboard.html", state=event_service.get_state())
+    return render_template("mod/dashboard.html", state=event_service.get_active_event())
 
 
 @mod_bp.route("/data")
@@ -91,7 +91,7 @@ def data():
                 "members": [{"id": m.id, "name": m.name, "email": m.email} for m in team.members],
             }
         )
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     return jsonify(
         {
             "teams": rows,
@@ -615,7 +615,7 @@ def extend_timer(team_mission_id):
 @login_required
 @roles_required("game_master")
 def event_settings():
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if request.method == "POST":
         state.name = (request.form.get("name") or "").strip() or None
         state.description = (request.form.get("description") or "").strip() or None

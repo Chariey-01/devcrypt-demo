@@ -1,5 +1,5 @@
 from app.extensions import db, socketio
-from app.models import Challenge, EventState, Mission, Team, TestCase, User
+from app.models import Challenge, Event, Mission, Team, TestCase, User
 from app.services.event_service import EventService
 from app.services.mission_service import MissionService
 
@@ -19,7 +19,7 @@ def _setup(app):
         team_b = Team(name="Bravo", score=0, integrity=100)
         team_b.set_key("BRAVO01")
         db.session.add_all([agent, gm, team_a, team_b])
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
 
         mission = Mission(

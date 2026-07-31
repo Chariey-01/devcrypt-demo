@@ -41,11 +41,11 @@ except ImportError:
 def seed(num_teams):
     from app import create_app
     from app.extensions import db
-    from app.models import Challenge, EventState, Mission, Team, TestCase, User
+    from app.models import Challenge, Event, Mission, Team, TestCase, User
 
     app = create_app()
     with app.app_context():
-        EventState.query.delete()
+        Event.query.delete()
         Team.query.filter(Team.name.like("LoadTest%")).delete(synchronize_session=False)
         Mission.query.filter(Mission.title.like("LoadTest%")).delete(synchronize_session=False)
         db.session.commit()
@@ -56,7 +56,7 @@ def seed(num_teams):
             agent.set_password("pw")
             db.session.add(agent)
 
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
 
         mission = Mission(
             title="LoadTest Doubler",

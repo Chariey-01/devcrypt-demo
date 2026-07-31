@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 from app.extensions import db
-from app.models import Challenge, EventState, Mission, Team, TeamMission, TestCase, User
+from app.models import Challenge, Event, Mission, Team, TeamMission, TestCase, User
 
 
 def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_type="code", event_status="running"):
@@ -13,7 +13,7 @@ def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_typ
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
         db.session.add_all([agent, gm, team])
-        db.session.add(EventState(status=event_status))
+        db.session.add(Event(status=event_status))
         db.session.commit()
 
         mission = Mission(
@@ -185,7 +185,7 @@ def test_mission_timer_starts_on_the_first_poll_once_the_event_goes_running(clie
     client.get("/missions/status")  # creates the row, event not running yet -> started_at stays None
 
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         state.status = "running"
         db.session.commit()
 
@@ -207,7 +207,7 @@ def test_pausing_and_resuming_the_event_preserves_remaining_time(client, app):
     gm_client.post("/mod/event/pause")
 
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         assert state.status == "paused"
         assert state.paused_at is not None
         # Backdate the pause itself so the resume below has a deterministic, non-zero gap to
@@ -221,7 +221,7 @@ def test_pausing_and_resuming_the_event_preserves_remaining_time(client, app):
     gm_client.post("/mod/event/start")
 
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         assert state.status == "running"
         assert state.paused_at is None
         tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
@@ -234,7 +234,7 @@ def test_pausing_does_not_stamp_a_mission_a_team_has_not_reached_yet(client, app
     # to shift -- resuming must not retroactively create/start one for them.
     mission_id, team_id = _setup_timed_mission(app, time_limit=300, event_status="paused")
     with app.app_context():
-        state = EventState.query.get(1)
+        state = Event.query.get(1)
         state.paused_at = datetime.utcnow() - timedelta(seconds=10)
         db.session.commit()
 

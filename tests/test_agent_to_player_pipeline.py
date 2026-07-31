@@ -2,7 +2,7 @@
 problem statement, starter code, language, difficulty, visible/hidden test suites, hints, and
 evidence files — all through the real HTTP routes, not direct DB manipulation."""
 from app.extensions import db
-from app.models import EventState, Mission, Team, User
+from app.models import Event, Mission, Team, User
 
 
 def _login(client, email):
@@ -16,7 +16,7 @@ def _setup(app):
         team = Team(name="Bravo", score=0, integrity=100)
         team.set_key("BRAVO01")
         db.session.add_all([agent, team])
-        db.session.add(EventState(status="running"))
+        db.session.add(Event(status="running"))
         db.session.commit()
         return team.id
 

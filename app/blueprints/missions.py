@@ -136,7 +136,7 @@ def _serialize_challenge(challenge, team_mission):
 @team_required
 def status():
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
@@ -271,7 +271,7 @@ def download_asset(asset_id):
 @team_required
 def answer_knowledge_question(question_id):
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
@@ -345,7 +345,7 @@ def answer_knowledge_question(question_id):
 @team_required
 def submit_challenge():
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
@@ -474,7 +474,7 @@ def submit_challenge():
 @team_required
 def request_hint():
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
@@ -519,7 +519,7 @@ def request_hint():
 @team_required
 def soft_lock():
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
@@ -549,7 +549,7 @@ def soft_lock():
 @team_required
 def run_visible_tests():
     team = current_team()
-    state = event_service.get_state()
+    state = event_service.get_active_event()
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
