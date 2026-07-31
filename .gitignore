@@ -31,6 +31,7 @@ SYSTEM.md
 SYSTEM_DESIGN.md
 PROJECT_EXPLANATION.md
 PROJECT_EXPLANATION_PART*.md
+HOW_DEVCRYPT_WORKS.md
 
 # Database
 *.db
@@ -60,3 +61,6 @@ build/
 dist/
 *.egg-info/
 .cache/
+
+# Node.js / frontend build tooling
+node_modules/

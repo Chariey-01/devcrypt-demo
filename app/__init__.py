@@ -101,7 +101,9 @@ def create_app(config_class=Config):
             "style-src": ["'self'", "'unsafe-inline'"],
             "img-src": ["'self'", "data:"],  # data: URIs used by generate_credential's QR PNG
             "connect-src": "'self'",
-            "font-src": "'self'",
+            # data: URIs used by Monaco's bundled codicon icon font (app/static/dist/style.css,
+            # Phase 2's React player dashboard) alongside the existing self-hosted webfonts.
+            "font-src": ["'self'", "data:"],
         },
     )
 
