@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 
 from flask_login import UserMixin
+from sqlalchemy import event as sa_event
 
 from .extensions import bcrypt, db
 
@@ -49,12 +50,15 @@ class Team(db.Model):
     __tablename__ = "teams"
 
     id = db.Column(db.Integer, primary_key=True)
-    # Nullable for now (Phase 1a) -- backfilled to the one existing Event by the migration, and
-    # every current row necessarily belongs to it. Becomes NOT NULL once multi-event scoping is
-    # proven out (Phase 1d). Team.name's uniqueness is still global at this stage; it becomes a
-    # composite (event_id, name) constraint in the same later phase.
-    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
+    # NOT NULL as of Phase 1d -- every creation path (team_repo.create_team, mod.py's
+    # credential generation, seed scripts) stamps this explicitly. Code that doesn't bother
+    # (mainly test fixtures predating Phase 1c/1d) gets it filled in automatically by the
+    # _stamp_default_event_id before_flush listener at the bottom of this module, resolving to
+    # whichever event is currently active rather than leaving a row unscoped.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False)
+    # Uniqueness is per-event (see __table_args__) rather than global -- two events can each
+    # have their own "Phantom" team.
+    name = db.Column(db.String(80), nullable=False)
     key_hash = db.Column(db.String(128), unique=True, nullable=False)
     score = db.Column(db.Integer, default=0)
     integrity = db.Column(db.Integer, default=100)
@@ -86,6 +90,8 @@ class Team(db.Model):
     leaderboard_snapshots = db.relationship("LeaderboardSnapshot", backref="team", cascade="all, delete-orphan")
     members = db.relationship("TeamMember", backref="team", cascade="all, delete-orphan")
 
+    __table_args__ = (db.UniqueConstraint("event_id", "name", name="uq_teams_event_id_name"),)
+
     def set_key(self, raw_key):
         self.key_hash = bcrypt.generate_password_hash(raw_key).decode("utf-8")
 
@@ -106,10 +112,10 @@ class Mission(db.Model):
     __tablename__ = "missions"
 
     id = db.Column(db.Integer, primary_key=True)
-    # Nullable for now (Phase 1a), backfilled to the one existing Event -- see Team.event_id for
-    # the same rationale. Once this is scoped (Phase 1b), booth_id's next-number logic in
-    # app/blueprints/agent.py needs to compute its max *within* an event, not globally.
-    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=True)
+    # NOT NULL as of Phase 1d -- see Team.event_id for the same rationale/default fallback.
+    # booth_id's next-number logic (app/blueprints/agent.py) computes its max scoped to one
+    # event, not globally, since Phase 1b.
+    event_id = db.Column(db.Integer, db.ForeignKey("events.id"), nullable=False)
     booth_id = db.Column(db.Integer, nullable=True)
     title = db.Column(db.String(120), nullable=False)
     type = db.Column(db.String(40), nullable=False)
@@ -467,3 +473,32 @@ class Event(db.Model):
     # A team can't Soft Lock a booth until they've failed it at least this many times — keeps
     # it a genuine "we're stuck" escape hatch rather than a free first-attempt point farm.
     soft_lock_min_attempts = db.Column(db.Integer, default=1, nullable=False)
+
+
+@sa_event.listens_for(db.session, "before_flush")
+def _stamp_default_event_id(session, flush_context, instances):
+    # Team.event_id/Mission.event_id are NOT NULL (Phase 1d) -- every real creation path stamps
+    # this explicitly, but code that doesn't (chiefly test fixtures predating multi-event
+    # support) needs a safety net rather than a bare IntegrityError. A plain Column `default=`
+    # can't do this: resolving "the active event" sometimes has to *create* one (a fresh
+    # install/test DB with no Event row yet), and calling session.add()/commit() from inside a
+    # column-default callable corrupts the flush already in progress (confirmed: raises
+    # ResourceClosedError). before_flush is the SQLAlchemy-supported hook for exactly this --
+    # objects added here (or assigned via a relationship, letting the ORM's own dependency
+    # ordering insert the Event first) are folded into the same flush, not a separate one.
+    pending = [
+        obj for obj in session.new
+        if isinstance(obj, (Team, Mission)) and obj.event_id is None
+    ]
+    if not pending:
+        return
+    active = (
+        session.query(Event).filter(Event.status.in_(("not_started", "running", "paused"))).order_by(Event.id.desc()).first()
+        or session.query(Event).order_by(Event.id.desc()).first()
+        or next((obj for obj in session.new if isinstance(obj, Event)), None)
+    )
+    if active is None:
+        active = Event(status="draft")
+        session.add(active)
+    for obj in pending:
+        obj.event = active

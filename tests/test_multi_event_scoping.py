@@ -64,10 +64,8 @@ def test_mod_dashboard_only_lists_the_active_events_teams(app):
 
 
 def test_get_team_by_name_does_not_cross_into_another_event(app):
-    # Team.name is still a global-unique DB column until Phase 1d lifts it to a composite
-    # (event_id, name) constraint -- two events genuinely reusing the same team name isn't
-    # possible yet. What Phase 1b delivers is the *read-path* scoping this exercises: a lookup
-    # scoped to one event never returns a team that belongs to another.
+    # Read-path scoping: a lookup scoped to one event never returns a team that belongs to
+    # another, even before considering whether two events can share a literal team name.
     with app.app_context():
         event1, team1, _ = _make_event_with_team_and_mission("1")
         event2, team2, _ = _make_event_with_team_and_mission("2")
@@ -78,6 +76,73 @@ def test_get_team_by_name_does_not_cross_into_another_event(app):
         assert TeamRepository().get_team_by_name("Alpha2", event_id=event1.id) is None
         assert TeamRepository().get_team_by_name("Alpha1", event_id=event1.id).id == team1.id
         assert TeamRepository().get_team_by_name("Alpha2", event_id=event2.id).id == team2.id
+
+
+def test_two_events_can_each_have_a_team_with_the_same_name(app):
+    # The actual Phase 1d deliverable: Team.name's uniqueness is scoped per-event
+    # (uq_teams_event_id_name) instead of a single global unique column, so two Career Fairs
+    # can each field their own "Phantom" without colliding.
+    with app.app_context():
+        event1 = Event(status="ended")
+        db.session.add(event1)
+        db.session.flush()
+        team1 = Team(name="Phantom", score=0, integrity=100, event_id=event1.id)
+        team1.set_key("KEY-A")
+        db.session.add(team1)
+
+        event2 = Event(status="running")
+        db.session.add(event2)
+        db.session.flush()
+        team2 = Team(name="Phantom", score=0, integrity=100, event_id=event2.id)
+        team2.set_key("KEY-B")
+        db.session.add(team2)
+        db.session.commit()
+
+        assert team1.id != team2.id
+        found1 = TeamRepository().get_team_by_name("Phantom", event_id=event1.id)
+        found2 = TeamRepository().get_team_by_name("Phantom", event_id=event2.id)
+        assert found1.id == team1.id
+        assert found2.id == team2.id
+        assert found1.check_key("KEY-A")
+        assert found2.check_key("KEY-B")
+
+
+def test_same_name_within_one_event_is_still_rejected(app):
+    from sqlalchemy.exc import IntegrityError
+
+    with app.app_context():
+        event = Event(status="running")
+        db.session.add(event)
+        db.session.flush()
+        team_a = Team(name="Phantom", score=0, integrity=100, event_id=event.id)
+        team_a.set_key("KEY-A")
+        db.session.add(team_a)
+        db.session.commit()
+
+        team_b = Team(name="Phantom", score=0, integrity=100, event_id=event.id)
+        team_b.set_key("KEY-B")
+        db.session.add(team_b)
+        try:
+            db.session.commit()
+            assert False, "expected an IntegrityError from the composite unique constraint"
+        except IntegrityError:
+            db.session.rollback()
+
+
+def test_team_and_mission_created_without_event_id_are_auto_stamped_to_the_active_event(app):
+    with app.app_context():
+        event = Event(status="running")
+        db.session.add(event)
+        db.session.commit()
+
+        team = Team(name="Unscoped Team", score=0, integrity=100)  # no event_id passed
+        team.set_key("KEY-C")
+        mission = Mission(title="Unscoped Node", type="code", narrative="n", cipher_word="X", booth_id=1, order_index=1)
+        db.session.add_all([team, mission])
+        db.session.commit()
+
+        assert team.event_id == event.id
+        assert mission.event_id == event.id
 
 
 def test_analytics_scoped_to_one_event_does_not_count_another_events_submissions(app):
