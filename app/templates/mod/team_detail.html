@@ -8,6 +8,7 @@
     <span class="pill">{{ icon('users', 13) }} {{ team.name }}</span>
     <span class="pill">{{ icon('gauge', 13) }} Score {{ team.score }}</span>
     <span class="pill">{{ icon('signal', 13) }} Integrity {{ team.integrity }}%</span>
+    {% include "mod/_event_switcher.html" %}
     <a class="ghost-link" href="{{ url_for('mod.dashboard') }}">&larr; Back to teams</a>
   </header>
 

@@ -3,7 +3,18 @@ import csv
 import io
 from datetime import datetime
 
-from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from ..decorators import roles_required
@@ -11,6 +22,7 @@ from ..extensions import db, limiter
 from ..models import (
     Challenge,
     CodeSubmission,
+    Event,
     EventLog,
     FinalFlagConfirmation,
     Mission,
@@ -25,7 +37,7 @@ from ..services.analytics_service import AnalyticsService
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
 from ..services.credential_service import generate_password, generate_team_key
-from ..services.event_service import EventService, event_scope_filter
+from ..services.event_service import ActiveEventConflict, EventService, event_scope_filter
 from ..services.mission_service import MissionService
 from ..services.scoring_service import ScoringService
 from ..sockets import notify_global, notify_mod, notify_team
@@ -42,6 +54,21 @@ team_repo = TeamRepository()
 admin_reset_service = AdminResetService()
 
 
+def _selected_event():
+    # A Game Master manages whichever event they last switched to (mod.switch_event, the event
+    # switcher in every mod page's header) -- distinct from get_active_event(), which is the
+    # one event *players* currently see. A GM reviewing last year's archived event's analytics,
+    # for instance, must not have every listing here silently jump back to this year's live one.
+    # Falls back to the active event for a GM who's never switched (today's only real case,
+    # since Event CRUD/the switcher are brand new).
+    event_id = session.get("gm_event_id")
+    if event_id is not None:
+        event = event_service.get_event(event_id)
+        if event is not None:
+            return event
+    return event_service.get_active_event()
+
+
 @mod_bp.route("/health")
 def health():
     return jsonify({"status": "ok"})
@@ -51,14 +78,14 @@ def health():
 @login_required
 @roles_required("game_master")
 def dashboard():
-    return render_template("mod/dashboard.html", state=event_service.get_active_event())
+    return render_template("mod/dashboard.html", state=_selected_event())
 
 
 @mod_bp.route("/data")
 @login_required
 @roles_required("game_master")
 def data():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     teams = Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all()
     # Published only — must match what the player's own /missions/status sees, so the GM
     # dashboard's "current mission" column never shows a draft mission a team can't actually
@@ -131,7 +158,7 @@ def team_detail(team_id):
 @login_required
 @roles_required("game_master")
 def activity():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     logs = (
         EventLog.query.filter(event_scope_filter(EventLog, active_event.id))
         .order_by(EventLog.logged_at.desc())
@@ -162,7 +189,7 @@ def activity():
 def list_missions():
     # Deliberately unfiltered by status — GMs manage draft/archived missions too (e.g. setting
     # a starting booth or assigning an agent before the mission is published).
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     missions = (
         Mission.query.filter(event_scope_filter(Mission, active_event.id))
         .order_by(Mission.order_index)
@@ -186,7 +213,7 @@ def create_team():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "name is required."}), 400
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     if Team.query.filter(Team.name == name, event_scope_filter(Team, active_event.id)).first():
         return jsonify({"error": "A team with that name already exists."}), 409
     key = generate_team_key()
@@ -260,7 +287,7 @@ def reset_all_teams():
     # single-team retry (that's reset_team above). The log entry below is written AFTER
     # reset_all_teams() clears EventLog, so it survives as the one record that a reset
     # happened, instead of being wiped by its own action.
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     team_count = Team.query.filter(event_scope_filter(Team, active_event.id)).count()
     admin_reset_service.reset_all_teams(event_id=active_event.id)
     audit_service.log(current_user, "game_master", "all_teams_reset", metadata=f"{team_count} teams")
@@ -324,7 +351,7 @@ def distribute_booths():
     # one-time initial-assignment tool (run once before the event starts, or again to
     # reshuffle) — it does not track live queue/occupancy state, since that would need a
     # different mechanism (booth check-in) this event doesn't have yet.
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     teams = Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.id).all()
     missions = (
         Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, active_event.id))
@@ -360,7 +387,7 @@ def generate_credential():
     if not name:
         return jsonify({"error": "name is required."}), 400
 
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     if kind == "team":
         team = Team.query.filter(
             Team.name == name, event_scope_filter(Team, active_event.id)
@@ -424,7 +451,7 @@ def generate_credential():
 @login_required
 @roles_required("game_master")
 def list_agents():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     agents = (
         User.query.filter(User.role == "booth_agent", event_scope_filter(User, active_event.id))
         .order_by(User.email)
@@ -526,7 +553,7 @@ def assign_agent(mission_id):
 @login_required
 @roles_required("game_master")
 def list_submissions():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     subs = (
         CodeSubmission.query.join(TeamMission, CodeSubmission.team_mission_id == TeamMission.id)
         .join(Mission, TeamMission.mission_id == Mission.id)
@@ -556,7 +583,7 @@ def list_submissions():
 @login_required
 @roles_required("game_master")
 def list_final_flag_pending():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     pending = (
         FinalFlagConfirmation.query.join(Team, FinalFlagConfirmation.team_id == Team.id)
         .filter(FinalFlagConfirmation.confirmed_at.is_(None), event_scope_filter(Team, active_event.id))
@@ -665,7 +692,7 @@ def extend_timer(team_mission_id):
 @login_required
 @roles_required("game_master")
 def event_settings():
-    state = event_service.get_active_event()
+    state = _selected_event()
     if request.method == "POST":
         state.name = (request.form.get("name") or "").strip() or None
         state.description = (request.form.get("description") or "").strip() or None
@@ -680,6 +707,12 @@ def event_settings():
         except (TypeError, ValueError):
             pass
         state.leaderboard_public = request.form.get("leaderboard_public") == "on"
+        for field in ("start_date", "end_date"):
+            raw = (request.form.get(field) or "").strip()
+            try:
+                setattr(state, field, datetime.fromisoformat(raw) if raw else None)
+            except ValueError:
+                pass
         audit_service.log(
             current_user,
             "game_master",
@@ -703,7 +736,11 @@ def event_settings():
 @login_required
 @roles_required("game_master")
 def publish_event():
-    event_service.publish()
+    try:
+        event_service.publish(event_id=_selected_event().id)
+    except ActiveEventConflict as exc:
+        flash(str(exc) + " End or archive it first.", "error")
+        return redirect(url_for("mod.dashboard"))
     audit_service.log(current_user, "game_master", "event_publish")
     db.session.commit()
     return redirect(url_for("mod.dashboard"))
@@ -713,7 +750,7 @@ def publish_event():
 @login_required
 @roles_required("game_master")
 def archive_event():
-    event_service.archive()
+    event_service.archive(event_id=_selected_event().id)
     audit_service.log(current_user, "game_master", "event_archive")
     db.session.commit()
     return redirect(url_for("mod.dashboard"))
@@ -723,7 +760,11 @@ def archive_event():
 @login_required
 @roles_required("game_master")
 def start_event():
-    event_service.start()
+    try:
+        event_service.start(event_id=_selected_event().id)
+    except ActiveEventConflict as exc:
+        flash(str(exc) + " End or archive it first.", "error")
+        return redirect(url_for("mod.dashboard"))
     audit_service.log(current_user, "game_master", "event_start")
     return redirect(url_for("mod.dashboard"))
 
@@ -732,7 +773,7 @@ def start_event():
 @login_required
 @roles_required("game_master")
 def pause_event():
-    event_service.pause()
+    event_service.pause(event_id=_selected_event().id)
     audit_service.log(current_user, "game_master", "event_pause")
     return redirect(url_for("mod.dashboard"))
 
@@ -741,7 +782,7 @@ def pause_event():
 @login_required
 @roles_required("game_master")
 def end_event():
-    event_service.end()
+    event_service.end(event_id=_selected_event().id)
     audit_service.log(current_user, "game_master", "event_end")
     return redirect(url_for("mod.dashboard"))
 
@@ -752,9 +793,61 @@ def end_event():
 def broadcast():
     message = request.form.get("message", "").strip()
     if message:
-        event_service.broadcast(message)
+        event_service.broadcast(message, event_id=_selected_event().id)
         audit_service.log(current_user, "game_master", "broadcast", metadata=message)
     return redirect(url_for("mod.dashboard"))
+
+
+@mod_bp.route("/events")
+@login_required
+@roles_required("game_master")
+def events():
+    return render_template("mod/events.html")
+
+
+@mod_bp.route("/events", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def create_event():
+    name = (request.form.get("name") or "").strip()
+    event = event_service.create_event(name=name)
+    audit_service.log(current_user, "game_master", "event_created", "event", event.id, metadata=name)
+    db.session.commit()
+    session["gm_event_id"] = event.id
+    flash(f"Created '{event.name or 'Untitled event'}' — now selected.", "success")
+    return redirect(url_for("mod.events"))
+
+
+@mod_bp.route("/events/<int:event_id>/duplicate", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def duplicate_event(event_id):
+    source = Event.query.get_or_404(event_id)
+    name = (request.form.get("name") or "").strip() or None
+    new_event = event_service.duplicate_event(event_id, name=name)
+    audit_service.log(
+        current_user, "game_master", "event_duplicated", "event", new_event.id,
+        metadata=f"from {source.name or source.id}",
+    )
+    flash(f"Duplicated '{source.name or source.id}' as '{new_event.name or new_event.id}'.", "success")
+    return redirect(url_for("mod.events"))
+
+
+@mod_bp.route("/events/switch", methods=["POST"])
+@login_required
+@roles_required("game_master")
+def switch_event():
+    event = Event.query.get_or_404(int(request.form["event_id"]))
+    session["gm_event_id"] = event.id
+    flash(f"Now managing '{event.name or event.id}'.", "success")
+    return redirect(request.referrer or url_for("mod.dashboard"))
+
+
+@mod_bp.context_processor
+def inject_event_switcher_context():
+    # Every mod/* template gets these for free (the event switcher lives in each page's shared
+    # header partial) instead of every render_template() call needing to remember to pass them.
+    return {"gm_events": event_service.list_events(), "gm_selected_event": _selected_event()}
 
 
 @mod_bp.route("/override/<int:team_mission_id>", methods=["POST"])
@@ -780,7 +873,7 @@ def export_csv():
     writer.writerow(
         ["team", "score", "integrity", "fragments", "clearance_stamps", "missions_passed", "hints_used"]
     )
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     for team in Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all():
         writer.writerow(
             [
@@ -805,7 +898,7 @@ def export_submissions_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["team", "mission", "mode", "total_tests", "passed_tests", "percent_score", "passed", "created_at"])
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     subs = (
         CodeSubmission.query.join(TeamMission, CodeSubmission.team_mission_id == TeamMission.id)
         .join(Mission, TeamMission.mission_id == Mission.id)
@@ -838,7 +931,7 @@ def export_challenges_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["mission", "difficulty", "grading_mode", "attempts", "passed", "pass_rate_percent"])
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     stats_by_mission = {s["mission_id"]: s for s in analytics_service.challenge_stats(event_id=active_event.id)}
     for mission in (
         Mission.query.filter(event_scope_filter(Mission, active_event.id)).order_by(Mission.order_index).all()
@@ -866,7 +959,7 @@ def export_challenges_csv():
 def export_event_stats_csv():
     output = io.StringIO()
     writer = csv.writer(output)
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     pass_fail = analytics_service.pass_fail_counts(event_id=active_event.id)
     hint_usage = analytics_service.hint_usage(event_id=active_event.id)
     writer.writerow(["metric", "value"])
@@ -894,7 +987,7 @@ def analytics():
 @login_required
 @roles_required("game_master")
 def analytics_data():
-    active_event = event_service.get_active_event()
+    active_event = _selected_event()
     pass_fail = analytics_service.pass_fail_counts(event_id=active_event.id)
     avg_seconds = analytics_service.average_completion_seconds(event_id=active_event.id)
     return jsonify(

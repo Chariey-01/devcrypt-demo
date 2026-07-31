@@ -1,0 +1,13 @@
+{# Included in every mod/* page's topbar. gm_events/gm_selected_event come from mod.py's
+   inject_event_switcher_context() context processor, not passed explicitly per-route. #}
+<form method="post" action="{{ url_for('mod.switch_event') }}" class="inline-form" style="display:inline-flex;align-items:center;gap:0.4rem;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <select name="event_id" onchange="this.form.submit()" aria-label="Select event to manage" style="width:auto;">
+    {% for ev in gm_events %}
+    <option value="{{ ev.id }}" {{ 'selected' if ev.id == gm_selected_event.id else '' }}>
+      {{ ev.name or ('Event #' ~ ev.id) }} — {{ ev.status }}
+    </option>
+    {% endfor %}
+  </select>
+</form>
+<a class="ghost-link" href="{{ url_for('mod.events') }}">{{ icon('network', 13) }} Manage Events</a>

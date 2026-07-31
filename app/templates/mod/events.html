@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Events — DevCrypt{% endblock %}
+{% block page_id %}mod{% endblock %}
+{% block content %}
+<main class="shell-wide mod">
+  <header class="topbar">
+    <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
+    <span class="pill">{{ icon('network', 13) }} Events</span>
+    {% include "mod/_event_switcher.html" %}
+    <a class="ghost-link" href="{{ url_for('mod.dashboard') }}">&larr; Back to dashboard</a>
+  </header>
+
+  <section class="card">
+    <p class="section-heading">{{ icon('zap', 14) }} Create Event</p>
+    <form method="post" action="{{ url_for('mod.create_event') }}" class="inline-form" style="display:flex;gap:0.4rem;align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="name" placeholder="e.g. Career Fair 2027" required>
+      <button type="submit">{{ icon('zap', 13) }} Create Draft Event</button>
+    </form>
+  </section>
+
+  <p class="section-heading">{{ icon('network', 14) }} All Events</p>
+  <section class="card">
+    <div class="data-grid-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Event</th><th>Status</th><th>Managing</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for ev in gm_events %}
+          <tr>
+            <td>{{ ev.name or ('Event #' ~ ev.id) }}</td>
+            <td><span class="badge badge-{{ ev.status }}">{{ ev.status }}</span></td>
+            <td>{{ '✓' if ev.id == gm_selected_event.id else '' }}</td>
+            <td>
+              <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                {% if ev.id != gm_selected_event.id %}
+                <form method="post" action="{{ url_for('mod.switch_event') }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="event_id" value="{{ ev.id }}">
+                  <button type="submit" class="ghost">{{ icon('crosshair', 12) }} Manage</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{{ url_for('mod.duplicate_event', event_id=ev.id) }}" class="inline-form" style="display:flex;gap:0.3rem;align-items:center;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="text" name="name" placeholder="Copy name (optional)" style="width:10rem;">
+                  <button type="submit" class="ghost">{{ icon('scan-line', 12) }} Duplicate</button>
+                </form>
+                {% if ev.status == "draft" %}
+                <form method="post" action="{{ url_for('mod.publish_event') }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="ghost" {{ 'disabled' if ev.id != gm_selected_event.id else '' }}>
+                    {{ icon('radar', 12) }} Publish
+                  </button>
+                </form>
+                {% endif %}
+                {% if ev.status not in ("archived",) %}
+                <form method="post" action="{{ url_for('mod.archive_event') }}" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="ghost" {{ 'disabled' if ev.id != gm_selected_event.id else '' }}>
+                    {{ icon('file-lock-2', 12) }} Archive
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="hint-text">No events yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="hint-text" style="margin-top:0.6rem;">{{ icon('octagon-alert', 13) }} Publish/Archive act on whichever
+      event you're currently managing (the "Managing" column) — switch to an event first if the buttons are disabled.
+      Only one event can be published/running at a time.</p>
+  </section>
+</main>
+{% endblock %}

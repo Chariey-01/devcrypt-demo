@@ -6,6 +6,7 @@
   <header class="topbar">
     <span class="brand-mini">{{ icon('cpu', 16) }} DevCrypt</span>
     <span class="pill">{{ icon('terminal', 13) }} Event Settings</span>
+    {% include "mod/_event_switcher.html" %}
     <a class="ghost-link" href="{{ url_for('mod.dashboard') }}">&larr; Back to dashboard</a>
   </header>
 
@@ -20,6 +21,12 @@
     </label>
     <label>Event description
       <textarea name="description" rows="2" placeholder="Shown to staff, optional">{{ state.description or '' }}</textarea>
+    </label>
+    <label>Start date <span class="hint-text">(display only, for now)</span>
+      <input type="date" name="start_date" value="{{ state.start_date.date().isoformat() if state.start_date else '' }}">
+    </label>
+    <label>End date <span class="hint-text">(display only, for now)</span>
+      <input type="date" name="end_date" value="{{ state.end_date.date().isoformat() if state.end_date else '' }}">
     </label>
     <label>Hint limit (per team, for the whole event)
       <input type="number" name="hint_limit" min="0" value="{{ state.hint_limit }}">
