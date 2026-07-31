@@ -17,7 +17,7 @@ from ..models import (
 )
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
-from ..services.event_service import EventService
+from ..services.event_service import EventService, event_scope_filter
 from ..services.final_flag_service import FinalFlagService
 from ..services.grading_service import GradingEngine
 from ..services.mission_service import MissionService
@@ -33,6 +33,13 @@ mission_service = MissionService(scoring=scoring_service, cipher=cipher_service)
 event_service = EventService()
 grading_engine = GradingEngine()
 audit_service = AuditService()
+
+def _team_event_id(team):
+    # Falls back to the active event for a team row that predates event_id being stamped
+    # everywhere (test fixtures, pre-migration data) -- keeps push notifications going
+    # somewhere real instead of an event room nobody joined.
+    return team.event_id or event_service.get_active_event().id
+
 
 NARRATIVE = {
     "challenge_pass": "NODE SECURED. FRAGMENT ACQUIRED.",
@@ -137,7 +144,10 @@ def _serialize_challenge(challenge, team_mission):
 def status():
     team = current_team()
     state = event_service.get_active_event()
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
     # Compact per-booth progress sequence for the player's mission timeline UI — built from
@@ -275,7 +285,10 @@ def answer_knowledge_question(question_id):
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -349,7 +362,10 @@ def submit_challenge():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -437,7 +453,7 @@ def submit_challenge():
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
         db.session.commit()
         notify_team(team.id, "submission_failed")
-        notify_mod("submission_failed")
+        notify_mod("submission_failed", _team_event_id(team))
         return jsonify(
             {
                 "correct": False,
@@ -462,7 +478,7 @@ def submit_challenge():
         team_mission.penalty_until = datetime.utcnow() + timedelta(seconds=60)
         db.session.commit()
         notify_team(team.id, "submission_failed")
-        notify_mod("submission_failed")
+        notify_mod("submission_failed", _team_event_id(team))
         return jsonify({"correct": False, "message": NARRATIVE["challenge_fail"]})
 
     mission_service.complete_mission(team, team_mission, mission, "passed", submitted_at=received_at)
@@ -478,7 +494,10 @@ def request_hint():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -523,7 +542,10 @@ def soft_lock():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -553,7 +575,10 @@ def run_visible_tests():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    missions = Mission.query.filter(
+        Mission.status == "published",
+        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+    ).order_by(Mission.order_index).all()
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -595,7 +620,7 @@ def run_visible_tests():
         metadata=f"{team.name}: {grading_result.passed_tests}/{grading_result.total_tests} visible tests passed",
     )
     db.session.commit()
-    notify_mod("visible_tests_run")
+    notify_mod("visible_tests_run", _team_event_id(team))
 
     return jsonify(
         {
@@ -682,7 +707,7 @@ def final_flag():
             None, "team", "final_flag_requested", "team", team.id, team_id=team.id, metadata=team.name
         )
         db.session.commit()
-        notify_mod("final_flag_requested")
+        notify_mod("final_flag_requested", _team_event_id(team))
 
     if confirmation.confirmed_at is None:
         return jsonify({"status": "pending"})

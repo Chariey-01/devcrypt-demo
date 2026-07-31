@@ -17,6 +17,7 @@ from ..models import (
 )
 from ..services.audit_service import AuditService
 from ..services.cipher_service import CipherService
+from ..services.event_service import EventService
 from ..services.mission_service import MissionService
 from ..services.scoring_service import ScoringService
 from ..sockets import notify_global
@@ -51,6 +52,7 @@ def _validate_asset_upload(file_storage):
 scoring_service = ScoringService()
 cipher_service = CipherService()
 audit_service = AuditService()
+event_service = EventService()
 mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
 
 
@@ -193,8 +195,19 @@ def create_mission():
     if not title or not narrative or not cipher_word:
         return jsonify({"error": "title, narrative, and cipher_word are required."}), 400
 
-    next_order = (db.session.query(db.func.max(Mission.order_index)).scalar() or 0) + 1
-    next_booth = (db.session.query(db.func.max(Mission.booth_id)).scalar() or 0) + 1
+    active_event = event_service.get_active_event()
+    next_order = (
+        db.session.query(db.func.max(Mission.order_index))
+        .filter(Mission.event_id == active_event.id)
+        .scalar()
+        or 0
+    ) + 1
+    next_booth = (
+        db.session.query(db.func.max(Mission.booth_id))
+        .filter(Mission.event_id == active_event.id)
+        .scalar()
+        or 0
+    ) + 1
     mission = Mission(
         title=title,
         type="code",
@@ -204,6 +217,7 @@ def create_mission():
         order_index=next_order,
         time_limit=data.get("time_limit"),
         owner_agent_id=current_user.id,
+        event_id=active_event.id,
         # New missions start as drafts — a mission with no challenge yet was previously
         # already visible to players (broken/empty panel) the instant it was created.
         status="draft",
@@ -286,8 +300,19 @@ def archive_mission(mission_id):
 @roles_required("booth_agent")
 def duplicate_mission(mission_id):
     mission = _owned_mission_or_404(mission_id)
-    next_order = (db.session.query(db.func.max(Mission.order_index)).scalar() or 0) + 1
-    next_booth = (db.session.query(db.func.max(Mission.booth_id)).scalar() or 0) + 1
+    active_event = event_service.get_active_event()
+    next_order = (
+        db.session.query(db.func.max(Mission.order_index))
+        .filter(Mission.event_id == active_event.id)
+        .scalar()
+        or 0
+    ) + 1
+    next_booth = (
+        db.session.query(db.func.max(Mission.booth_id))
+        .filter(Mission.event_id == active_event.id)
+        .scalar()
+        or 0
+    ) + 1
     copy = Mission(
         title=f"{mission.title} (copy)",
         type=mission.type,
@@ -301,6 +326,7 @@ def duplicate_mission(mission_id):
         order_index=next_order,
         time_limit=mission.time_limit,
         owner_agent_id=current_user.id,
+        event_id=mission.event_id or active_event.id,
         status="draft",
     )
     db.session.add(copy)
@@ -403,7 +429,7 @@ def upsert_challenge(mission_id):
     # security.py) — never carries the new prompt itself, just tells any connected player to
     # re-fetch /missions/status. Global rather than notify_team(team_id, ...) because an Agent
     # editing a challenge doesn't know which teams are currently on this mission.
-    notify_global("mission_updated")
+    notify_global("mission_updated", mission.event_id or event_service.get_active_event().id)
     return jsonify(_serialize_mission_detail(mission))
 
 

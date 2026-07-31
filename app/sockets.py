@@ -18,9 +18,28 @@ logger = logging.getLogger("devcrypt.sockets")
 # loop keeps everyone current until it reconnects, exactly the fallback SYSTEM.md sec.6 promises.
 
 
+def _resolve_event_id():
+    # A logged-in team's own event_id is authoritative for itself, regardless of which event
+    # is currently "active" -- a team's session stays meaningful even if the GM has moved on to
+    # publishing a different event. Staff and anonymous connections (e.g. the public
+    # leaderboard) have no per-connection event of their own yet -- Phase 1c's event switcher
+    # will set session["event_id"] for staff who manage more than one event; until then (and
+    # for staff/anonymous connections generally), the currently active event is correct, since
+    # it's the only one that's ever publicly relevant.
+    team = current_team()
+    if team:
+        return team.event_id
+    if current_user.is_authenticated and current_user.event_id:
+        return current_user.event_id
+    from .services.event_service import EventService  # local import: avoids a circular import
+
+    return EventService().get_active_event().id
+
+
 @socketio.on("connect")
 def handle_connect():
     team = current_team()
+    event_id = _resolve_event_id()
     if team:
         join_room(f"team-{team.id}")
         logger.info("socket connect sid=%s team=%r", request.sid, team.name)
@@ -28,8 +47,9 @@ def handle_connect():
         logger.info("socket connect sid=%s user=%r role=%s", request.sid, current_user.email, current_user.role)
     else:
         logger.info("socket connect sid=%s anonymous", request.sid)
+    join_room(f"event-{event_id}")
     if current_user.is_authenticated and current_user.role == "game_master":
-        join_room("mod")
+        join_room(f"mod-{event_id}")
 
 
 @socketio.on("disconnect")
@@ -41,9 +61,9 @@ def notify_team(team_id, event_type):
     socketio.emit("team_update", {"type": event_type}, room=f"team-{team_id}")
 
 
-def notify_mod(event_type):
-    socketio.emit("mod_update", {"type": event_type}, room="mod")
+def notify_mod(event_type, event_id):
+    socketio.emit("mod_update", {"type": event_type}, room=f"mod-{event_id}")
 
 
-def notify_global(event_type):
-    socketio.emit("event_update", {"type": event_type})
+def notify_global(event_type, event_id):
+    socketio.emit("event_update", {"type": event_type}, room=f"event-{event_id}")

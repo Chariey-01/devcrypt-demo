@@ -5,6 +5,16 @@ from ..models import Event, TeamMission
 from ..sockets import notify_global
 
 
+def event_scope_filter(model, event_id):
+    """OR-in rows that haven't been stamped with an event_id yet, so scoping stays additive
+    during the Phase 1b/1c rollout instead of silently hiding legacy/test data that predates
+    every creation path stamping it. The live production DB has no such rows (Phase 1a's
+    migration backfilled everything to the one real Event), so in practice this only matters
+    until Phase 1d makes event_id NOT NULL everywhere, at which point the IS NULL half never
+    matches anything and this is a plain equality filter."""
+    return db.or_(model.event_id == event_id, model.event_id.is_(None))
+
+
 class EventService:
     def get_active_event(self):
         # Phase 1a: there is no Event CRUD yet (that's Phase 1c), so exactly one Event row can
@@ -57,7 +67,7 @@ class EventService:
             state.started_at = datetime.utcnow()
         state.status = "running"
         db.session.commit()
-        notify_global("event_start")
+        notify_global("event_start", state.id)
         return state
 
     def pause(self):
@@ -65,14 +75,14 @@ class EventService:
         state.status = "paused"
         state.paused_at = datetime.utcnow()
         db.session.commit()
-        notify_global("event_pause")
+        notify_global("event_pause", state.id)
         return state
 
     def end(self):
         state = self.get_active_event()
         state.status = "ended"
         db.session.commit()
-        notify_global("event_end")
+        notify_global("event_end", state.id)
         return state
 
     def broadcast(self, message):
@@ -80,5 +90,5 @@ class EventService:
         state.broadcast_message = message
         state.broadcast_at = datetime.utcnow()
         db.session.commit()
-        notify_global("broadcast")
+        notify_global("broadcast", state.id)
         return state

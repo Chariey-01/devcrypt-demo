@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, render_template
 
 from ..models import Mission, Team
-from ..services.event_service import EventService
+from ..services.event_service import EventService, event_scope_filter
 from ..services.mission_service import MissionService
 
 leaderboard_bp = Blueprint("leaderboard", __name__, url_prefix="/leaderboard")
@@ -18,11 +18,16 @@ def leaderboard():
 
 @leaderboard_bp.route("/data")
 def data():
-    if not event_service.get_active_event().leaderboard_public:
+    active_event = event_service.get_active_event()
+    if not active_event.leaderboard_public:
         return jsonify({"hidden": True, "leaderboard": []})
 
-    teams = Team.query.all()
-    missions = Mission.query.filter_by(status="published").order_by(Mission.order_index).all()
+    teams = Team.query.filter(event_scope_filter(Team, active_event.id)).all()
+    missions = (
+        Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, active_event.id))
+        .order_by(Mission.order_index)
+        .all()
+    )
     total_missions = len(missions)
     rows = []
     for team in teams:

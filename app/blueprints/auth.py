@@ -7,9 +7,11 @@ from flask_login import current_user, login_user, logout_user
 from ..extensions import db, limiter
 from ..models import User
 from ..repositories.team_repo import TeamRepository
+from ..services.event_service import EventService
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 team_repo = TeamRepository()
+event_service = EventService()
 logger = logging.getLogger("devcrypt.auth")
 
 STAFF_DESTINATIONS = {
@@ -30,7 +32,11 @@ def team_login():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         key = request.form.get("key", "").strip()
-        team = team_repo.get_team_by_name(name) if name else None
+        # Scoped to the one publicly-live event -- so a team name only has to be unique within
+        # its own event, not across every event DevCrypt has ever run (Phase 1c will let more
+        # than one Event exist; only one is ever "active" for public login at a time).
+        active_event = event_service.get_active_event()
+        team = team_repo.get_team_by_name(name, event_id=active_event.id) if name else None
         if not team or not key or not team.check_key(key):
             logger.warning("team login failed name=%r", name)
             flash("Invalid team name or key.", "error")

@@ -13,7 +13,15 @@ KNOWLEDGE_CHECK_POOL_SIZE = 5
 from ..sockets import notify_global, notify_mod, notify_team
 from .audit_service import AuditService
 from .cipher_service import CipherService
+from .event_service import EventService
 from .scoring_service import ScoringService
+
+
+def _team_event_id(team):
+    # Falls back to the active event for a team row that predates event_id being stamped
+    # everywhere (test fixtures, pre-migration data) -- never leaves a push notification with
+    # nowhere real to go.
+    return team.event_id or EventService().get_active_event().id
 
 
 class MissionService:
@@ -265,13 +273,14 @@ class MissionService:
             # already won.
             db.session.rollback()
             return None
+        event_id = _team_event_id(team)
         notify_team(team.id, "mission_result")
-        notify_mod("mission_result")
+        notify_mod("mission_result", event_id)
         # Lazy import — avoids a circular import (analytics_service imports MissionService).
         from .analytics_service import AnalyticsService
 
         AnalyticsService(mission_service=self).snapshot_leaderboard()
-        notify_global("leaderboard_refresh")
+        notify_global("leaderboard_refresh", event_id)
         return fragment_value
 
     def soft_lock_mission(self, team, team_mission, mission, min_attempts, actor=None, actor_role="team"):
@@ -303,10 +312,11 @@ class MissionService:
         )
         db.session.commit()
 
+        event_id = _team_event_id(team)
         notify_team(team.id, "mission_result")
-        notify_mod("mission_result")
+        notify_mod("mission_result", event_id)
         from .analytics_service import AnalyticsService
 
         AnalyticsService(mission_service=self).snapshot_leaderboard()
-        notify_global("leaderboard_refresh")
+        notify_global("leaderboard_refresh", event_id)
         return True

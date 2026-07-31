@@ -9,6 +9,7 @@ from ..models import (
     TeamKnowledgeAnswer,
     TeamMission,
 )
+from .event_service import event_scope_filter
 
 
 class AdminResetService:
@@ -62,12 +63,22 @@ class AdminResetService:
         db.session.delete(team)
         db.session.commit()
 
-    def reset_all_teams(self):
+    def reset_all_teams(self, event_id=None):
         """Full clean slate: resets every team's progress and clears event-wide history
         (leaderboard snapshots, activity log). Intended for the moment testing ends and the
-        real event begins — not a mid-event single-team retry, which is reset_team's job."""
-        for team in Team.query.all():
+        real event begins — not a mid-event single-team retry, which is reset_team's job.
+        Scoped to one event (event_id=None resets literally everything, every event ever
+        run — never what a GM resetting "this event" before it starts actually wants)."""
+        teams = Team.query.filter(event_scope_filter(Team, event_id)).all() if event_id is not None else Team.query.all()
+        for team in teams:
             self._clear_team_progress(team)
-        LeaderboardSnapshot.query.delete(synchronize_session=False)
-        EventLog.query.delete(synchronize_session=False)
+        if event_id is not None:
+            team_ids = [t.id for t in teams]
+            LeaderboardSnapshot.query.filter(LeaderboardSnapshot.team_id.in_(team_ids)).delete(
+                synchronize_session=False
+            )
+            EventLog.query.filter(event_scope_filter(EventLog, event_id)).delete(synchronize_session=False)
+        else:
+            LeaderboardSnapshot.query.delete(synchronize_session=False)
+            EventLog.query.delete(synchronize_session=False)
         db.session.commit()

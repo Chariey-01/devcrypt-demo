@@ -5,18 +5,21 @@ from ..decorators import roles_required
 from ..extensions import db
 from ..models import ClearanceStamp, Team
 from ..services.audit_service import AuditService
+from ..services.event_service import EventService, event_scope_filter
 from ..sockets import notify_mod
 
 security_bp = Blueprint("security", __name__, url_prefix="/security")
 
 audit_service = AuditService()
+event_service = EventService()
 
 
 @security_bp.route("/")
 @login_required
 @roles_required("security_officer")
 def dashboard():
-    teams = Team.query.order_by(Team.name).all()
+    active_event = event_service.get_active_event()
+    teams = Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all()
     return render_template("security/dashboard.html", teams=teams)
 
 
@@ -24,7 +27,8 @@ def dashboard():
 @login_required
 @roles_required("security_officer")
 def data():
-    teams = Team.query.order_by(Team.name).all()
+    active_event = event_service.get_active_event()
+    teams = Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all()
     return jsonify(
         {
             "teams": [
@@ -61,7 +65,7 @@ def issue_stamp():
     db.session.add(stamp)
     audit_service.log(current_user, "security_officer", "clearance_stamp", "team", team.id)
     db.session.commit()
-    notify_mod("clearance_stamp")
+    notify_mod("clearance_stamp", team.event_id or event_service.get_active_event().id)
 
     flash(f"Clearance stamp {checkpoint_id} issued to {team.name}.", "success")
     return redirect(url_for("security.dashboard"))
