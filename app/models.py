@@ -6,7 +6,6 @@ from sqlalchemy import event as sa_event
 
 from .extensions import bcrypt, db
 
-
 team_players = db.Table(
     "team_players",
     db.Column("team_id", db.Integer, db.ForeignKey("teams.id"), primary_key=True),
@@ -86,8 +85,12 @@ class Team(db.Model):
     starting_mission = db.relationship("Mission", foreign_keys=[starting_mission_id])
     team_missions = db.relationship("TeamMission", backref="team", cascade="all, delete-orphan")
     fragments = db.relationship("Fragment", backref="team", cascade="all, delete-orphan")
-    clearance_stamps = db.relationship("ClearanceStamp", backref="team", cascade="all, delete-orphan")
-    leaderboard_snapshots = db.relationship("LeaderboardSnapshot", backref="team", cascade="all, delete-orphan")
+    clearance_stamps = db.relationship(
+        "ClearanceStamp", backref="team", cascade="all, delete-orphan"
+    )
+    leaderboard_snapshots = db.relationship(
+        "LeaderboardSnapshot", backref="team", cascade="all, delete-orphan"
+    )
     members = db.relationship("TeamMember", backref="team", cascade="all, delete-orphan")
 
     __table_args__ = (db.UniqueConstraint("event_id", "name", name="uq_teams_event_id_name"),)
@@ -134,10 +137,14 @@ class Mission(db.Model):
     status = db.Column(db.String(20), default="published", nullable=False)
 
     event = db.relationship("Event")
-    evidence_files = db.relationship("EvidenceFile", backref="mission", cascade="all, delete-orphan")
+    evidence_files = db.relationship(
+        "EvidenceFile", backref="mission", cascade="all, delete-orphan"
+    )
     challenges = db.relationship("Challenge", backref="mission", cascade="all, delete-orphan")
     knowledge_questions = db.relationship(
-        "KnowledgeQuestion", backref="mission", cascade="all, delete-orphan",
+        "KnowledgeQuestion",
+        backref="mission",
+        cascade="all, delete-orphan",
         order_by="KnowledgeQuestion.order_index",
     )
     team_missions = db.relationship("TeamMission", backref="mission", cascade="all, delete-orphan")
@@ -226,7 +233,10 @@ class Challenge(db.Model):
     difficulty = db.Column(db.String(20), nullable=True)
 
     test_cases = db.relationship(
-        "TestCase", backref="challenge", cascade="all, delete-orphan", order_by="TestCase.order_index"
+        "TestCase",
+        backref="challenge",
+        cascade="all, delete-orphan",
+        order_by="TestCase.order_index",
     )
     hints = db.relationship(
         "Hint", backref="challenge", cascade="all, delete-orphan", order_by="Hint.order_index"
@@ -278,7 +288,9 @@ class CodeSubmission(db.Model):
     # this right already; this relationship was the one admin_reset_service.py had to work around
     # with a manual bulk-delete for the team-reset path specifically -- this fixes it at the
     # source so every delete path (not just team-reset) is safe.
-    team_mission = db.relationship("TeamMission", backref=db.backref("code_submissions", cascade="all, delete-orphan"))
+    team_mission = db.relationship(
+        "TeamMission", backref=db.backref("code_submissions", cascade="all, delete-orphan")
+    )
 
 
 class TeamMission(db.Model):
@@ -339,7 +351,9 @@ class TeamKnowledgeAnswer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     team_mission_id = db.Column(db.Integer, db.ForeignKey("team_missions.id"), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey("knowledge_questions.id"), nullable=False)
-    selected_option_id = db.Column(db.Integer, db.ForeignKey("knowledge_options.id"), nullable=False)
+    selected_option_id = db.Column(
+        db.Integer, db.ForeignKey("knowledge_options.id"), nullable=False
+    )
     is_correct = db.Column(db.Boolean, default=False)
     answered_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -347,8 +361,12 @@ class TeamKnowledgeAnswer(db.Model):
     # options, which already cascade from the question) hits the same class of NOT NULL FK
     # violation fixed for CodeSubmission/TeamMission above, the moment any team has answered
     # it. Needed for scripts/sync_knowledge_bank.py, which replaces a booth's question set.
-    question = db.relationship("KnowledgeQuestion", backref=db.backref("team_answers", cascade="all, delete-orphan"))
-    selected_option = db.relationship("KnowledgeOption", backref=db.backref("team_answers", cascade="all, delete-orphan"))
+    question = db.relationship(
+        "KnowledgeQuestion", backref=db.backref("team_answers", cascade="all, delete-orphan")
+    )
+    selected_option = db.relationship(
+        "KnowledgeOption", backref=db.backref("team_answers", cascade="all, delete-orphan")
+    )
 
 
 class Fragment(db.Model):
@@ -487,13 +505,15 @@ def _stamp_default_event_id(session, flush_context, instances):
     # objects added here (or assigned via a relationship, letting the ORM's own dependency
     # ordering insert the Event first) are folded into the same flush, not a separate one.
     pending = [
-        obj for obj in session.new
-        if isinstance(obj, (Team, Mission)) and obj.event_id is None
+        obj for obj in session.new if isinstance(obj, (Team, Mission)) and obj.event_id is None
     ]
     if not pending:
         return
     active = (
-        session.query(Event).filter(Event.status.in_(("not_started", "running", "paused"))).order_by(Event.id.desc()).first()
+        session.query(Event)
+        .filter(Event.status.in_(("not_started", "running", "paused")))
+        .order_by(Event.id.desc())
+        .first()
         or session.query(Event).order_by(Event.id.desc()).first()
         or next((obj for obj in session.new if isinstance(obj, Event)), None)
     )

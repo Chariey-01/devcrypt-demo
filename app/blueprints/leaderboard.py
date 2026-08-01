@@ -24,7 +24,9 @@ def data():
 
     teams = Team.query.filter(event_scope_filter(Team, active_event.id)).all()
     missions = (
-        Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, active_event.id))
+        Mission.query.filter(
+            Mission.status == "published", event_scope_filter(Mission, active_event.id)
+        )
         .order_by(Mission.order_index)
         .all()
     )

@@ -4,6 +4,7 @@ a single-threaded test can't run two HTTP requests at once, the second "concurre
 simulated with a raw connection that bypasses db.session entirely (mirroring what a second,
 independent request-scoped session would do), so the Python-level `team` object under test
 stays exactly as stale as it would across two real requests."""
+
 from sqlalchemy import text
 
 from app.extensions import db
@@ -15,7 +16,9 @@ def _setup(app):
     with app.app_context():
         team = Team(name="Echo", score=0, integrity=100)
         team.set_key("ECHO0001")
-        mission = Mission(title="Doubler", type="code", narrative="n", cipher_word="X", order_index=0)
+        mission = Mission(
+            title="Doubler", type="code", narrative="n", cipher_word="X", order_index=0
+        )
         db.session.add_all([team, mission])
         db.session.flush()
         team_mission = TeamMission(team_id=team.id, mission_id=mission.id, status="in_progress")
@@ -38,7 +41,9 @@ def test_complete_mission_does_not_lose_a_concurrent_score_update(app):
         # and committed — via a connection entirely outside db.session, so `team`'s in-memory
         # score attribute stays stale at 0 exactly like it would across two real HTTP requests.
         with db.engine.begin() as conn:
-            conn.execute(text("UPDATE teams SET score = score + 50 WHERE id = :id"), {"id": team_id})
+            conn.execute(
+                text("UPDATE teams SET score = score + 50 WHERE id = :id"), {"id": team_id}
+            )
 
         MissionService().complete_mission(team, team_mission, mission, "passed")
         db.session.commit()

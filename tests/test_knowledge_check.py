@@ -6,7 +6,6 @@ from app.models import (
     KnowledgeQuestion,
     Mission,
     Team,
-    TeamMission,
     TestCase,
     User,
 )
@@ -31,18 +30,30 @@ def _setup_mission_with_challenge(app):
         db.session.commit()
 
         mission = Mission(
-            title="Cyber Node", type="code", narrative="n", cipher_word="CYBER",
-            booth_id=1, order_index=1, owner_agent_id=agent.id,
+            title="Cyber Node",
+            type="code",
+            narrative="n",
+            cipher_word="CYBER",
+            booth_id=1,
+            order_index=1,
+            owner_agent_id=agent.id,
         )
         db.session.add(mission)
         db.session.flush()
-        challenge = Challenge(mission_id=mission.id, type="code", prompt="Double it.", grading_mode="auto")
+        challenge = Challenge(
+            mission_id=mission.id, type="code", prompt="Double it.", grading_mode="auto"
+        )
         db.session.add(challenge)
         db.session.flush()
         db.session.add(
             TestCase(
-                challenge_id=challenge.id, name="case", input_data="3", expected_output="6",
-                weight=1, visibility="visible", order_index=0,
+                challenge_id=challenge.id,
+                name="case",
+                input_data="3",
+                expected_output="6",
+                weight=1,
+                visibility="visible",
+                order_index=0,
             )
         )
         db.session.commit()
@@ -70,7 +81,9 @@ def test_agent_cannot_author_knowledge_questions_the_upload_interface_was_remove
 
 def _add_question(app, mission_id, correct_text="Phishing"):
     with app.app_context():
-        q = KnowledgeQuestion(mission_id=mission_id, question_text="What attack exploits human psychology?")
+        q = KnowledgeQuestion(
+            mission_id=mission_id, question_text="What attack exploits human psychology?"
+        )
         db.session.add(q)
         db.session.flush()
         correct = KnowledgeOption(question_id=q.id, option_text=correct_text, is_correct=True)
@@ -84,7 +97,9 @@ def _add_n_questions(app, mission_id, n):
     with app.app_context():
         ids = []
         for i in range(n):
-            q = KnowledgeQuestion(mission_id=mission_id, question_text=f"Question {i}?", order_index=i)
+            q = KnowledgeQuestion(
+                mission_id=mission_id, question_text=f"Question {i}?", order_index=i
+            )
             db.session.add(q)
             db.session.flush()
             correct = KnowledgeOption(question_id=q.id, option_text="Right", is_correct=True)
@@ -116,7 +131,9 @@ def test_correct_answer_scores_points_and_unlocks_the_challenge(client, app):
     question_id, correct_id, wrong_id = _add_question(app, mission_id)
     _login_team(client)
 
-    res = client.post(f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id})
+    res = client.post(
+        f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id}
+    )
     body = res.get_json()
     assert body["correct"] is True
 
@@ -139,7 +156,9 @@ def test_wrong_answer_scores_nothing_and_stays_locked(client, app):
     question_id, correct_id, wrong_id = _add_question(app, mission_id)
     _login_team(client)
 
-    res = client.post(f"/missions/knowledge-check/{question_id}/answer", json={"option_id": wrong_id})
+    res = client.post(
+        f"/missions/knowledge-check/{question_id}/answer", json={"option_id": wrong_id}
+    )
     assert res.get_json()["correct"] is False
 
     with app.app_context():
@@ -157,7 +176,9 @@ def test_answering_twice_does_not_double_score(client, app):
     _login_team(client)
 
     client.post(f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id})
-    res = client.post(f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id})
+    res = client.post(
+        f"/missions/knowledge-check/{question_id}/answer", json={"option_id": correct_id}
+    )
     assert res.get_json()["already_answered"] is True
 
     with app.app_context():
@@ -167,7 +188,9 @@ def test_answering_twice_does_not_double_score(client, app):
         assert team.score == 30
 
 
-def test_correct_answer_reveals_a_cipher_clue_but_real_fragment_still_requires_the_challenge(client, app):
+def test_correct_answer_reveals_a_cipher_clue_but_real_fragment_still_requires_the_challenge(
+    client, app
+):
     mission_id, team_id, agent_id = _setup_mission_with_challenge(app)
     question_id, correct_id, wrong_id = _add_question(app, mission_id)
     _login_team(client)
@@ -239,10 +262,15 @@ def test_cipher_reveal_uses_position_within_assigned_subset_not_raw_order_index(
         from app.models import KnowledgeOption
 
         correct_option_id = (
-            KnowledgeOption.query.filter_by(question_id=second_question_id, is_correct=True).first().id
+            KnowledgeOption.query.filter_by(question_id=second_question_id, is_correct=True)
+            .first()
+            .id
         )
 
-    client.post(f"/missions/knowledge-check/{second_question_id}/answer", json={"option_id": correct_option_id})
+    client.post(
+        f"/missions/knowledge-check/{second_question_id}/answer",
+        json={"option_id": correct_option_id},
+    )
 
     status_after = client.get("/missions/status").get_json()
     revealed = status_after["cryptogram"][0]["revealed"]
@@ -303,7 +331,9 @@ def test_deleting_a_knowledge_question_with_a_recorded_answer_does_not_crash(cli
         assert TeamKnowledgeAnswer.query.filter_by(question_id=question_id).count() == 0
 
 
-def test_run_tests_and_submit_unlock_after_completing_the_assigned_subset_from_a_larger_pool(client, app):
+def test_run_tests_and_submit_unlock_after_completing_the_assigned_subset_from_a_larger_pool(
+    client, app
+):
     # Regression test: run-tests/submit compared answers against the booth's FULL question pool
     # (mission.knowledge_questions, e.g. 15 in the real knowledge bank) instead of the 5-question
     # subset actually assigned to this team (assign_knowledge_subset). Every real booth has a
@@ -320,14 +350,22 @@ def test_run_tests_and_submit_unlock_after_completing_the_assigned_subset_from_a
 
     with app.app_context():
         for q in assigned:
-            correct_option = KnowledgeOption.query.filter_by(question_id=q["id"], is_correct=True).first()
-            client.post(f"/missions/knowledge-check/{q['id']}/answer", json={"option_id": correct_option.id})
+            correct_option = KnowledgeOption.query.filter_by(
+                question_id=q["id"], is_correct=True
+            ).first()
+            client.post(
+                f"/missions/knowledge-check/{q['id']}/answer", json={"option_id": correct_option.id}
+            )
 
     status_after = client.get("/missions/status").get_json()
     assert status_after["mission"]["knowledge_check_complete"] is True
 
-    res = client.post("/missions/challenge/run-tests", json={"code": "n = int(input())\nprint(n * 2)\n"})
+    res = client.post(
+        "/missions/challenge/run-tests", json={"code": "n = int(input())\nprint(n * 2)\n"}
+    )
     assert res.status_code == 200, res.get_json()
 
-    res = client.post("/missions/challenge/submit", json={"code": "n = int(input())\nprint(n * 2)\n"})
+    res = client.post(
+        "/missions/challenge/submit", json={"code": "n = int(input())\nprint(n * 2)\n"}
+    )
     assert res.status_code == 200, res.get_json()

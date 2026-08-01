@@ -10,6 +10,7 @@ socket directly would bypass it. Real kernel-level network isolation needs a net
 or container, which is a larger follow-up (see docs/SYSTEM_DESIGN.md) -- not assumed available
 on the current single-process Railway/Nixpacks deployment.
 """
+
 import socket
 
 
@@ -21,6 +22,6 @@ def _blocked(*args, **kwargs):
     raise _NetworkDisabledError("Network access is disabled for graded submissions.")
 
 
-socket.socket = _blocked
+socket.socket = _blocked  # type: ignore[misc,assignment]  # deliberate, see module docstring
 socket.create_connection = _blocked
 socket.create_server = _blocked

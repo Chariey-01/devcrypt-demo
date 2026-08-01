@@ -1,17 +1,19 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
+
 def _normalize_db_url(url):
     # SQLAlchemy 2.x requires the "postgresql://" scheme; some providers
     # (Heroku-style convention) still hand out "postgres://".
     if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://"):]
+        return "postgresql://" + url[len("postgres://") :]
     return url
 
 

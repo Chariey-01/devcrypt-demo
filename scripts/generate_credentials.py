@@ -79,7 +79,11 @@ def write_qr_codes(rows, qr_dir, base_url):
             lines = [f"DevCrypt Team: {row['name']}", f"Key: {row['secret']}"]
             login_path = "/auth/team-login"
         else:
-            lines = [f"DevCrypt Staff ({row['role']})", f"Email: {row['login']}", f"Password: {row['secret']}"]
+            lines = [
+                f"DevCrypt Staff ({row['role']})",
+                f"Email: {row['login']}",
+                f"Password: {row['secret']}",
+            ]
             login_path = "/auth/login"
         if base_url:
             lines.append(f"Login at: {base_url.rstrip('/')}{login_path}")
@@ -90,15 +94,27 @@ def write_qr_codes(rows, qr_dir, base_url):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--teams", nargs="+", default=["Alpha Squad", "Bravo Squad"])
     parser.add_argument("--game-masters", nargs="+", default=["gm@devcrypt.local"])
-    parser.add_argument("--booth-agents", nargs="+", default=["agent1@devcrypt.local", "agent2@devcrypt.local"])
+    parser.add_argument(
+        "--booth-agents", nargs="+", default=["agent1@devcrypt.local", "agent2@devcrypt.local"]
+    )
     parser.add_argument("--security-officers", nargs="+", default=["officer@devcrypt.local"])
     parser.add_argument("--out", default="credentials.csv")
-    parser.add_argument("--qr", action="store_true", help="Also write one QR code PNG per credential")
-    parser.add_argument("--qr-dir", default="credentials_qr", help="Directory for QR PNGs (used with --qr)")
-    parser.add_argument("--base-url", default="", help="Included as a login link inside each QR code, e.g. https://your-app.up.railway.app")
+    parser.add_argument(
+        "--qr", action="store_true", help="Also write one QR code PNG per credential"
+    )
+    parser.add_argument(
+        "--qr-dir", default="credentials_qr", help="Directory for QR PNGs (used with --qr)"
+    )
+    parser.add_argument(
+        "--base-url",
+        default="",
+        help="Included as a login link inside each QR code, e.g. https://your-app.up.railway.app",
+    )
     args = parser.parse_args()
 
     app = create_app()

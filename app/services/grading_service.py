@@ -56,11 +56,11 @@ class TestCaseResult:
     visibility: str
     passed: bool
     weight: int
-    failure_message: str = None
-    input_data: str = None
-    expected_output: str = None
-    actual_output: str = None
-    error: str = None
+    failure_message: str | None = None
+    input_data: str | None = None
+    expected_output: str | None = None
+    actual_output: str | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -188,7 +188,9 @@ class GradingEngine:
                 result.expected_output = tc.expected_output
                 result.actual_output = output
             if not passed:
-                result.failure_message = tc.failure_message or "Output did not match expected result."
+                result.failure_message = (
+                    tc.failure_message or "Output did not match expected result."
+                )
             results.append(result)
         return results
 
@@ -259,8 +261,15 @@ class GradingEngine:
                 try:
                     proc = subprocess.run(
                         [
-                            sys.executable, "-m", "pytest", "test_submission.py",
-                            "--tb=no", "-q", f"--junitxml={report_path}", "-p", "no:cacheprovider",
+                            sys.executable,
+                            "-m",
+                            "pytest",
+                            "test_submission.py",
+                            "--tb=no",
+                            "-q",
+                            f"--junitxml={report_path}",
+                            "-p",
+                            "no:cacheprovider",
                         ],
                         capture_output=True,
                         text=True,
@@ -274,8 +283,12 @@ class GradingEngine:
                         challenge,
                         [
                             TestCaseResult(
-                                name="suite", visibility="hidden", passed=False, weight=1,
-                                failure_message="Suite timed out.", error="timeout",
+                                name="suite",
+                                visibility="hidden",
+                                passed=False,
+                                weight=1,
+                                failure_message="Suite timed out.",
+                                error="timeout",
                             )
                         ],
                     )
@@ -286,7 +299,10 @@ class GradingEngine:
                     # Diagnostic tail goes in .error, which is never player-facing.
                     results = [
                         TestCaseResult(
-                            name="collection", visibility="hidden", passed=False, weight=1,
+                            name="collection",
+                            visibility="hidden",
+                            passed=False,
+                            weight=1,
                             failure_message="Code failed to run (syntax error or crash).",
                             error=(proc.stdout + proc.stderr).strip()[-500:],
                         )

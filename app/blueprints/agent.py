@@ -49,11 +49,14 @@ def _validate_asset_upload(file_storage):
         return None, "File content doesn't match its extension."
     return (raw, mime_type, filename), None
 
+
 scoring_service = ScoringService()
 cipher_service = CipherService()
 audit_service = AuditService()
 event_service = EventService()
-mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
+mission_service = MissionService(
+    scoring=scoring_service, cipher=cipher_service, audit=audit_service
+)
 
 
 def _owned_mission_or_404(mission_id):
@@ -114,7 +117,12 @@ def _serialize_testcase(tc):
 
 
 def _serialize_hint(hint):
-    return {"id": hint.id, "text": hint.text, "point_cost": hint.point_cost, "order_index": hint.order_index}
+    return {
+        "id": hint.id,
+        "text": hint.text,
+        "point_cost": hint.point_cost,
+        "order_index": hint.order_index,
+    }
 
 
 def _serialize_asset(asset):
@@ -135,7 +143,8 @@ def _serialize_knowledge_question(q):
         "question_text": q.question_text,
         "order_index": q.order_index,
         "options": [
-            {"id": o.id, "option_text": o.option_text, "is_correct": o.is_correct} for o in q.options
+            {"id": o.id, "option_text": o.option_text, "is_correct": o.is_correct}
+            for o in q.options
         ],
     }
 
@@ -147,7 +156,9 @@ def _serialize_mission_detail(mission):
     payload["test_cases"] = []
     payload["hints"] = []
     payload["assets"] = [_serialize_asset(a) for a in mission.evidence_files]
-    payload["knowledge_questions"] = [_serialize_knowledge_question(q) for q in mission.knowledge_questions]
+    payload["knowledge_questions"] = [
+        _serialize_knowledge_question(q) for q in mission.knowledge_questions
+    ]
     if challenge:
         payload["challenge"] = {
             "title": challenge.title,
@@ -422,7 +433,12 @@ def upsert_challenge(mission_id):
     difficulty = data.get("difficulty")
     challenge.difficulty = difficulty if difficulty in ("easy", "medium", "hard") else None
     audit_service.log(
-        current_user, "booth_agent", "challenge_uploaded", "mission", mission.id, metadata=mission.title
+        current_user,
+        "booth_agent",
+        "challenge_uploaded",
+        "mission",
+        mission.id,
+        metadata=mission.title,
     )
     db.session.commit()
     # Push-triggers-refresh, same as every other live-data change in this app (missions.py,
@@ -586,7 +602,10 @@ def create_hint(mission_id):
     if not text:
         return jsonify({"error": "text is required."}), 400
     next_order = (
-        db.session.query(db.func.max(Hint.order_index)).filter_by(challenge_id=mission.challenge.id).scalar() or 0
+        db.session.query(db.func.max(Hint.order_index))
+        .filter_by(challenge_id=mission.challenge.id)
+        .scalar()
+        or 0
     ) + 1
     hint = Hint(
         challenge_id=mission.challenge.id,
@@ -740,5 +759,3 @@ def list_submissions():
         .all()
     )
     return jsonify({"submissions": [_serialize_submission(s) for s in submissions]})
-
-

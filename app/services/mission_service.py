@@ -8,13 +8,13 @@ from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..knowledge_bank import category_for_text
 from ..models import Fragment, Mission, TeamMission
-
-KNOWLEDGE_CHECK_POOL_SIZE = 5
 from ..sockets import notify_global, notify_mod, notify_team
 from .audit_service import AuditService
 from .cipher_service import CipherService
 from .event_service import EventService
 from .scoring_service import ScoringService
+
+KNOWLEDGE_CHECK_POOL_SIZE = 5
 
 
 def _team_event_id(team):
@@ -52,7 +52,9 @@ class MissionService:
         # starting point (confirmed against the event's actual physical rotation design).
         if not getattr(team, "starting_mission_id", None) or len(missions) <= 1:
             return missions
-        start_index = next((i for i, m in enumerate(missions) if m.id == team.starting_mission_id), None)
+        start_index = next(
+            (i for i, m in enumerate(missions) if m.id == team.starting_mission_id), None
+        )
         if start_index is None:
             return missions
         return missions[start_index:] + missions[:start_index]
@@ -61,7 +63,11 @@ class MissionService:
         tm_map = {tm.mission_id: tm for tm in team.team_missions}
         for mission in self.ordered_for_team(team, missions):
             team_mission = tm_map.get(mission.id)
-            if not team_mission or team_mission.status not in ("passed", "overridden", "soft_locked"):
+            if not team_mission or team_mission.status not in (
+                "passed",
+                "overridden",
+                "soft_locked",
+            ):
                 return mission, team_mission
         return None, None
 
@@ -83,7 +89,9 @@ class MissionService:
         team_mission.elapsed_seconds = int(elapsed)
         if mission.time_limit is not None:
             team_mission.time_remaining = int(mission.time_limit - elapsed)
-            team_mission.submission_status = "on_time" if elapsed <= mission.time_limit else "overtime"
+            team_mission.submission_status = (
+                "on_time" if elapsed <= mission.time_limit else "overtime"
+            )
         else:
             team_mission.time_remaining = None
             team_mission.submission_status = "on_time"
@@ -117,11 +125,18 @@ class MissionService:
             db.session.add(team_mission)
             db.session.flush()  # assigns team_mission.id for the audit log below
             self.audit.log(
-                None, "team", "mission_opened", "team_mission", team_mission.id,
-                team_id=team.id, metadata=f"{team.name}: {mission.title}",
+                None,
+                "team",
+                "mission_opened",
+                "team_mission",
+                team_mission.id,
+                team_id=team.id,
+                metadata=f"{team.name}: {mission.title}",
             )
             db.session.commit()
-        elif team_mission.started_at is None and event_running and team_mission.submitted_at is None:
+        elif (
+            team_mission.started_at is None and event_running and team_mission.submitted_at is None
+        ):
             # Row already existed (created while the event wasn't running yet), and this is the
             # first poll since it actually went live -- start the clock for real now.
             team_mission.started_at = datetime.utcnow()
@@ -136,8 +151,13 @@ class MissionService:
             return False
         team_mission.started_at += timedelta(seconds=seconds)
         self.audit.log(
-            actor, actor_role, "timer_extended", "team_mission", team_mission.id,
-            team_id=team_mission.team_id, metadata=f"+{seconds}s",
+            actor,
+            actor_role,
+            "timer_extended",
+            "team_mission",
+            team_mission.id,
+            team_id=team_mission.team_id,
+            metadata=f"+{seconds}s",
         )
         db.session.commit()
         notify_team(team_mission.team_id, "timer_extended")
@@ -175,7 +195,7 @@ class MissionService:
         if len(all_questions) <= pool_size:
             return list(all_questions)
 
-        by_category = {}
+        by_category: dict[str, list] = {}
         for q in all_questions:
             category = category_for_text(q.question_text) or "Uncategorized"
             by_category.setdefault(category, []).append(q)
@@ -185,7 +205,7 @@ class MissionService:
         categories = list(by_category.keys())
         random.shuffle(categories)
 
-        chosen = []
+        chosen: list = []
         while len(chosen) < pool_size and any(by_category.values()):
             for category in categories:
                 if len(chosen) >= pool_size:
@@ -196,7 +216,14 @@ class MissionService:
         return chosen
 
     def complete_mission(
-        self, team, team_mission, mission, status, actor=None, actor_role="team", grading_result=None,
+        self,
+        team,
+        team_mission,
+        mission,
+        status,
+        actor=None,
+        actor_role="team",
+        grading_result=None,
         submitted_at=None,
     ):
         if team_mission.status in ("passed", "overridden", "soft_locked"):
@@ -228,7 +255,9 @@ class MissionService:
                 # Auto-graded (sandboxed test suite) pass — weighted-percent scoring instead
                 # of the flat manual-review score. Everything below (fragment, advance,
                 # audit) is identical either way.
-                self.scoring.score_auto_graded_pass(team, team_mission, mission.challenge, grading_result, on_time)
+                self.scoring.score_auto_graded_pass(
+                    team, team_mission, mission.challenge, grading_result, on_time
+                )
             else:
                 self.scoring.score_mission_pass(team, team_mission, mission, on_time)
         else:
@@ -241,7 +270,9 @@ class MissionService:
         fragment_value = self.cipher.generate_fragment(
             team.id, mission.id, current_app.config["EVENT_SALT"]
         )
-        db.session.add(Fragment(team_id=team.id, mission_id=mission.id, cipher_value=fragment_value))
+        db.session.add(
+            Fragment(team_id=team.id, mission_id=mission.id, cipher_value=fragment_value)
+        )
 
         # Everything from here through the commit is wrapped in one try/except: SQLAlchemy's
         # autoflush means the pending Fragment insert (and its UNIQUE(team_id, mission_id)
@@ -257,8 +288,14 @@ class MissionService:
             team.booth_current = next_mission.id if next_mission else None
 
             self.audit.log(
-                actor, actor_role, f"mission_{status}", "team_mission", team_mission.id,
-                team_id=team.id, result=status, score_delta=team_mission.score,
+                actor,
+                actor_role,
+                f"mission_{status}",
+                "team_mission",
+                team_mission.id,
+                team_id=team.id,
+                result=status,
+                score_delta=team_mission.score,
             )
             db.session.commit()
         except IntegrityError:
@@ -283,7 +320,9 @@ class MissionService:
         notify_global("leaderboard_refresh", event_id)
         return fragment_value
 
-    def soft_lock_mission(self, team, team_mission, mission, min_attempts, actor=None, actor_role="team"):
+    def soft_lock_mission(
+        self, team, team_mission, mission, min_attempts, actor=None, actor_role="team"
+    ):
         # Deliberately NOT a call into complete_mission with a new status value: soft-locking
         # must never insert a Fragment (that's the one thing complete_mission always does,
         # right after freeze/score/status), and it pays a flat participation amount instead of
@@ -307,8 +346,14 @@ class MissionService:
         team.booth_current = next_mission.id if next_mission else None
 
         self.audit.log(
-            actor, actor_role, "mission_soft_locked", "team_mission", team_mission.id,
-            team_id=team.id, result="soft_locked", score_delta=team_mission.score,
+            actor,
+            actor_role,
+            "mission_soft_locked",
+            "team_mission",
+            team_mission.id,
+            team_id=team.id,
+            result="soft_locked",
+            score_delta=team_mission.score,
         )
         db.session.commit()
 

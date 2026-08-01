@@ -4,7 +4,9 @@ from app.extensions import db
 from app.models import Challenge, Event, Mission, Team, TeamMission, TestCase, User
 
 
-def _setup_timed_mission(app, time_limit=300, grading_mode="auto", challenge_type="code", event_status="running"):
+def _setup_timed_mission(
+    app, time_limit=300, grading_mode="auto", challenge_type="code", event_status="running"
+):
     with app.app_context():
         agent = User(email="agent@test.local", role="booth_agent")
         agent.set_password("pw")
@@ -175,14 +177,18 @@ def test_mission_timer_does_not_start_before_the_event_is_running(client, app):
 
     with app.app_context():
         tm = TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first()
-        assert tm is not None  # row exists (attempts/hints tracked) even though the clock hasn't started
+        assert (
+            tm is not None
+        )  # row exists (attempts/hints tracked) even though the clock hasn't started
         assert tm.started_at is None
 
 
 def test_mission_timer_starts_on_the_first_poll_once_the_event_goes_running(client, app):
     mission_id, team_id = _setup_timed_mission(app, time_limit=60, event_status="not_started")
     _login_team(client)
-    client.get("/missions/status")  # creates the row, event not running yet -> started_at stays None
+    client.get(
+        "/missions/status"
+    )  # creates the row, event not running yet -> started_at stays None
 
     with app.app_context():
         state = Event.query.get(1)
@@ -214,9 +220,9 @@ def test_pausing_and_resuming_the_event_preserves_remaining_time(client, app):
         # shift started_at by, without sleeping in the test.
         state.paused_at = datetime.utcnow() - timedelta(seconds=20)
         db.session.commit()
-        started_before_resume = TeamMission.query.filter_by(
-            team_id=team_id, mission_id=mission_id
-        ).first().started_at
+        started_before_resume = (
+            TeamMission.query.filter_by(team_id=team_id, mission_id=mission_id).first().started_at
+        )
 
     gm_client.post("/mod/event/start")
 
@@ -260,7 +266,9 @@ def test_extend_timer_grants_extra_time_to_a_single_team(client, app):
 
     gm_client = app.test_client()
     _login_staff(gm_client, "gm@test.local")
-    res = gm_client.post(f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"})
+    res = gm_client.post(
+        f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"}
+    )
     assert res.status_code == 302
 
     with app.app_context():
@@ -281,5 +289,7 @@ def test_extend_timer_is_a_no_op_once_the_mission_is_submitted(client, app):
 
     gm_client = app.test_client()
     _login_staff(gm_client, "gm@test.local")
-    res = gm_client.post(f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"})
+    res = gm_client.post(
+        f"/mod/team-mission/{team_mission_id}/extend-timer", data={"seconds": "300"}
+    )
     assert res.status_code == 409

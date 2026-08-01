@@ -22,8 +22,12 @@ def _setup(app, team_count=5, booth_count=3):
         mission_ids = []
         for i in range(booth_count):
             mission = Mission(
-                title=f"Booth {i}", type="code", narrative="n", cipher_word="WORD",
-                booth_id=i + 1, order_index=i,
+                title=f"Booth {i}",
+                type="code",
+                narrative="n",
+                cipher_word="WORD",
+                booth_id=i + 1,
+                order_index=i,
             )
             db.session.add(mission)
             db.session.flush()

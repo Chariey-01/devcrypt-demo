@@ -31,7 +31,9 @@ def test_game_master_creates_a_booth_agent_and_it_can_log_in(client, app):
         assert agent.is_active is True
 
     agent_client = app.test_client()
-    login_res = agent_client.post("/auth/login", data={"email": "newagent@test.local", "password": password})
+    login_res = agent_client.post(
+        "/auth/login", data={"email": "newagent@test.local", "password": password}
+    )
     assert login_res.status_code == 302
     # STAFF_DESTINATIONS routes a fresh booth_agent login straight to the CMS dashboard —
     # agents are grading-free monitors now, there's no separate manual-review queue to land on.
@@ -40,11 +42,15 @@ def test_game_master_creates_a_booth_agent_and_it_can_log_in(client, app):
 
 def test_game_master_can_edit_an_agent(client, app):
     _login_gm(client, app)
-    client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     with app.app_context():
         agent_id = User.query.filter_by(email="agent@test.local").first().id
 
-    res = client.put(f"/mod/agents/{agent_id}", json={"full_name": "Sam Rivera", "email": "renamed@test.local"})
+    res = client.put(
+        f"/mod/agents/{agent_id}", json={"full_name": "Sam Rivera", "email": "renamed@test.local"}
+    )
     assert res.status_code == 200
     with app.app_context():
         agent = User.query.get(agent_id)
@@ -64,13 +70,17 @@ def test_deactivated_agent_cannot_log_in(client, app):
     client.post(f"/mod/agents/{agent_id}/active", json={"is_active": False})
 
     agent_client = app.test_client()
-    login_res = agent_client.post("/auth/login", data={"email": "agent@test.local", "password": password})
+    login_res = agent_client.post(
+        "/auth/login", data={"email": "agent@test.local", "password": password}
+    )
     assert login_res.status_code == 401
 
 
 def test_deactivating_an_agent_locks_out_their_already_open_session_immediately(client, app):
     _login_gm(client, app)
-    res = client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    res = client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     password = res.get_json()["secret"]
     with app.app_context():
         agent_id = User.query.filter_by(email="agent@test.local").first().id
@@ -110,7 +120,9 @@ def test_deactivating_an_agent_locks_out_their_already_open_session_immediately(
 
 def test_reactivating_an_agent_restores_login(client, app):
     _login_gm(client, app)
-    res = client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    res = client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     password = res.get_json()["secret"]
     with app.app_context():
         agent_id = User.query.filter_by(email="agent@test.local").first().id
@@ -119,18 +131,27 @@ def test_reactivating_an_agent_restores_login(client, app):
     client.post(f"/mod/agents/{agent_id}/active", json={"is_active": True})
 
     agent_client = app.test_client()
-    login_res = agent_client.post("/auth/login", data={"email": "agent@test.local", "password": password})
+    login_res = agent_client.post(
+        "/auth/login", data={"email": "agent@test.local", "password": password}
+    )
     assert login_res.status_code == 302
 
 
 def test_cannot_delete_an_agent_who_still_owns_booths(client, app):
     _login_gm(client, app)
-    client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     with app.app_context():
         agent = User.query.filter_by(email="agent@test.local").first()
         mission = Mission(
-            title="Owned Booth", type="code", narrative="n", cipher_word="X",
-            booth_id=1, order_index=1, owner_agent_id=agent.id,
+            title="Owned Booth",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+            owner_agent_id=agent.id,
         )
         db.session.add(mission)
         db.session.commit()
@@ -144,7 +165,9 @@ def test_cannot_delete_an_agent_who_still_owns_booths(client, app):
 
 def test_can_delete_an_agent_with_no_owned_booths(client, app):
     _login_gm(client, app)
-    client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     with app.app_context():
         agent_id = User.query.filter_by(email="agent@test.local").first().id
 
@@ -156,12 +179,19 @@ def test_can_delete_an_agent_with_no_owned_booths(client, app):
 
 def test_cannot_assign_a_booth_to_a_deactivated_agent(client, app):
     _login_gm(client, app)
-    client.post("/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"})
+    client.post(
+        "/mod/credentials/generate", json={"kind": "booth_agent", "name": "agent@test.local"}
+    )
     with app.app_context():
         agent = User.query.filter_by(email="agent@test.local").first()
         agent_id = agent.id
         mission = Mission(
-            title="Free Booth", type="code", narrative="n", cipher_word="Y", booth_id=2, order_index=2,
+            title="Free Booth",
+            type="code",
+            narrative="n",
+            cipher_word="Y",
+            booth_id=2,
+            order_index=2,
         )
         db.session.add(mission)
         db.session.commit()

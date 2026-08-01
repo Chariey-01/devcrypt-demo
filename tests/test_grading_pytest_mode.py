@@ -24,7 +24,9 @@ def test_multiply():
 """
 
 CORRECT_CODE = "def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a * b\n"
-MULTIPLY_BROKEN_CODE = "def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a + b\n"
+MULTIPLY_BROKEN_CODE = (
+    "def add(a, b):\n    return a + b\n\n\ndef multiply(a, b):\n    return a + b\n"
+)
 SYNTAX_ERROR_CODE = "def add(a, b) return a + b\n"
 
 

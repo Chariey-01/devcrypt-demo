@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import Challenge, EventLog, Event, Mission, Team, TeamMission, TestCase, User
+from app.models import Challenge, Event, EventLog, Mission, Team, TeamMission, TestCase, User
 
 
 def _setup_auto_graded_mission(app):
@@ -86,8 +86,12 @@ def _setup_five_case_mission(app, pass_threshold=None):
         db.session.commit()
 
         mission = Mission(
-            title="Scaler Node", type="code", narrative="Double the input.",
-            cipher_word="SCALE", booth_id=1, order_index=1,
+            title="Scaler Node",
+            type="code",
+            narrative="Double the input.",
+            cipher_word="SCALE",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
@@ -96,8 +100,11 @@ def _setup_five_case_mission(app, pass_threshold=None):
         if pass_threshold is not None:
             challenge_kwargs["pass_threshold"] = pass_threshold
         challenge = Challenge(
-            mission_id=mission.id, type="code", prompt="Double the input.",
-            grading_mode="auto", **challenge_kwargs,
+            mission_id=mission.id,
+            type="code",
+            prompt="Double the input.",
+            grading_mode="auto",
+            **challenge_kwargs,
         )
         db.session.add(challenge)
         db.session.flush()
@@ -105,8 +112,13 @@ def _setup_five_case_mission(app, pass_threshold=None):
         db.session.add_all(
             [
                 TestCase(
-                    challenge_id=challenge.id, name=f"case {n}", input_data=str(n),
-                    expected_output=str(n * 2), weight=1, visibility="visible", order_index=i,
+                    challenge_id=challenge.id,
+                    name=f"case {n}",
+                    input_data=str(n),
+                    expected_output=str(n * 2),
+                    weight=1,
+                    visibility="visible",
+                    order_index=i,
                 )
                 for i, n in enumerate([1, 2, 3, 4, 5])
             ]
@@ -295,7 +307,8 @@ def test_default_pass_threshold_is_80_percent(client, app):
         assert Challenge.query.filter_by(mission_id=mission_id).first().pass_threshold == 80
 
     res = client.post(
-        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=4)}  # 4/5 = 80%
+        "/missions/challenge/submit",
+        json={"code": _PARTIAL_CODE.format(threshold=4)},  # 4/5 = 80%
     )
     body = res.get_json()
     assert body["correct"] is True
@@ -307,7 +320,8 @@ def test_below_threshold_awards_partial_score_no_fragment_no_advance(client, app
     _login_team(client)
 
     res = client.post(
-        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)}  # 3/5 = 60%
+        "/missions/challenge/submit",
+        json={"code": _PARTIAL_CODE.format(threshold=3)},  # 3/5 = 60%
     )
     body = res.get_json()
     assert body["correct"] is False
@@ -329,13 +343,17 @@ def test_resubmitting_at_a_better_percent_only_awards_the_delta(client, app):
     mission_id, team_id = _setup_five_case_mission(app)
     _login_team(client)
 
-    client.post("/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=2)})  # 40%
+    client.post(
+        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=2)}
+    )  # 40%
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
         assert team.score == round(20 * 0.4)  # 8
 
     _clear_cooldown(app, team_id, mission_id)
-    client.post("/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)})  # 60%
+    client.post(
+        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)}
+    )  # 60%
 
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
@@ -349,13 +367,17 @@ def test_resubmitting_at_a_worse_percent_never_reduces_score(client, app):
     mission_id, team_id = _setup_five_case_mission(app)
     _login_team(client)
 
-    client.post("/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)})  # 60%
+    client.post(
+        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)}
+    )  # 60%
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
         score_after_60 = team.score
 
     _clear_cooldown(app, team_id, mission_id)
-    client.post("/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=1)})  # 20%
+    client.post(
+        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=1)}
+    )  # 20%
 
     with app.app_context():
         team = Team.query.filter_by(name="Alpha").first()
@@ -368,9 +390,13 @@ def test_partial_credit_does_not_double_count_once_the_team_eventually_passes(cl
     mission_id, team_id = _setup_five_case_mission(app)
     _login_team(client)
 
-    client.post("/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)})  # 60%, fail
+    client.post(
+        "/missions/challenge/submit", json={"code": _PARTIAL_CODE.format(threshold=3)}
+    )  # 60%, fail
     _clear_cooldown(app, team_id, mission_id)
-    res = client.post("/missions/challenge/submit", json={"code": "n = int(input())\nprint(n * 2)\n"})  # 100%
+    res = client.post(
+        "/missions/challenge/submit", json={"code": "n = int(input())\nprint(n * 2)\n"}
+    )  # 100%
     assert res.get_json()["correct"] is True
 
     with app.app_context():

@@ -13,24 +13,39 @@ def _setup(app, soft_lock_min_attempts=1):
         db.session.commit()
 
         mission = Mission(
-            title="Stuck Node", type="code", narrative="n", cipher_word="STUCK",
-            booth_id=1, order_index=1,
+            title="Stuck Node",
+            type="code",
+            narrative="n",
+            cipher_word="STUCK",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
-        challenge = Challenge(mission_id=mission.id, type="code", prompt="Double it.", grading_mode="auto")
+        challenge = Challenge(
+            mission_id=mission.id, type="code", prompt="Double it.", grading_mode="auto"
+        )
         db.session.add(challenge)
         db.session.flush()
         db.session.add(
             TestCase(
-                challenge_id=challenge.id, name="case", input_data="3", expected_output="6",
-                weight=1, visibility="visible", order_index=0,
+                challenge_id=challenge.id,
+                name="case",
+                input_data="3",
+                expected_output="6",
+                weight=1,
+                visibility="visible",
+                order_index=0,
             )
         )
         db.session.add(
             Mission(
-                title="Next Node", type="code", narrative="n", cipher_word="NEXT",
-                booth_id=2, order_index=2,
+                title="Next Node",
+                type="code",
+                narrative="n",
+                cipher_word="NEXT",
+                booth_id=2,
+                order_index=2,
             )
         )
         db.session.commit()
@@ -91,10 +106,6 @@ def test_soft_lock_cannot_be_applied_twice(client, app):
     _login_team(client)
     _fail_once(client, team_id, mission_id, app)
     client.post("/missions/soft-lock")
-
-    with app.app_context():
-        team = Team.query.filter_by(name="Alpha").first()
-        score_after_first = team.score
 
     # The team has already advanced past mission_id, so a second call operates on the *new*
     # current mission ("Next Node") -- to prove the old one specifically can't be re-locked or

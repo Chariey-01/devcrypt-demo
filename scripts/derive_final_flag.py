@@ -14,6 +14,7 @@ Usage:
 
     python3 scripts/derive_final_flag.py --flag "FLAG{...}" --mission-ids 1,2,3,4,5,6
 """
+
 import argparse
 import os
 import sys
@@ -24,7 +25,9 @@ from app.services.final_flag_service import FinalFlagService
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--flag", required=True, help="The real, secret final flag plaintext.")
     parser.add_argument(
         "--mission-ids",
@@ -54,10 +57,14 @@ def main():
     # that doesn't actually decrypt back to what was just typed in.
     verify_service = FinalFlagService(args.event_salt, ciphertext_b64)
     if verify_service.reconstruct(mission_ids) != args.flag:
-        print("Internal error: round-trip check failed — ciphertext NOT generated.", file=sys.stderr)
+        print(
+            "Internal error: round-trip check failed — ciphertext NOT generated.", file=sys.stderr
+        )
         sys.exit(1)
 
-    print("Round-trip check passed. Set these two environment variables on the target deployment:\n")
+    print(
+        "Round-trip check passed. Set these two environment variables on the target deployment:\n"
+    )
     print(f"FINAL_FLAG_CIPHERTEXT={ciphertext_b64}")
     print(f"FINAL_FLAG_MISSION_IDS={','.join(str(m) for m in mission_ids)}")
     print(

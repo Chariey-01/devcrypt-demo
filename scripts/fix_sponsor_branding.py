@@ -18,6 +18,7 @@ Usage:
     # Against Railway: copy DATABASE_URL from the Railway dashboard's Postgres service (or run
     # this from a shell where it's already exported the way deploy_db_setup.py expects).
 """
+
 import argparse
 import os
 import sys
@@ -91,7 +92,9 @@ CORRECT_BRANDING = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--yes", action="store_true", help="Apply without an interactive confirm prompt.")
+    parser.add_argument(
+        "--yes", action="store_true", help="Apply without an interactive confirm prompt."
+    )
     args = parser.parse_args()
 
     app = create_app()

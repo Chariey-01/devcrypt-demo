@@ -17,6 +17,7 @@ Usage:
     python3 scripts/sync_hints.py             # prints a summary, asks to confirm
     python3 scripts/sync_hints.py --yes        # skip the confirmation prompt
 """
+
 import argparse
 import os
 import sys
@@ -46,7 +47,7 @@ BOOTH_HINTS = {
     ],
     4: [
         "Split the input line on spaces to get one entry per device.",
-        "Count how many entries equal the string \"1\" -- not the integer 1.",
+        'Count how many entries equal the string "1" -- not the integer 1.',
         "The count itself is the whole answer -- print just that number, nothing else.",
     ],
     5: [
@@ -88,8 +89,12 @@ def sync_hints(quiet=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--yes", action="store_true", help="Apply without an interactive confirm prompt.")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--yes", action="store_true", help="Apply without an interactive confirm prompt."
+    )
     args = parser.parse_args()
 
     app = create_app()
@@ -108,7 +113,9 @@ def main():
 
         print(f"{len(preview)} booth(s) will have their hints replaced:\n")
         for mission, existing_count, new_count in preview:
-            print(f"  booth_id={mission.booth_id} ({mission.title}): {existing_count} existing hint(s) -> {new_count} new")
+            print(
+                f"  booth_id={mission.booth_id} ({mission.title}): {existing_count} existing hint(s) -> {new_count} new"
+            )
         print()
 
         if not args.yes:

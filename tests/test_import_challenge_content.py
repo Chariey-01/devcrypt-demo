@@ -5,10 +5,10 @@ from scripts.import_challenge_content import (
     normalize_test_module_import,
 )
 
-
 # ---------------------------------------------------------------------------
 # normalize_test_module_import
 # ---------------------------------------------------------------------------
+
 
 def test_normalize_test_module_import_rewrites_a_single_foreign_module():
     test_code = "from t1_challenge import detect_brute_force\n\n\ndef test_x():\n    assert detect_brute_force([]) is False\n"
@@ -39,7 +39,7 @@ def test_normalize_test_module_import_raises_on_ambiguous_multiple_foreign_modul
     test_code = "from module_a import x\nfrom module_b import y\n"
     try:
         normalize_test_module_import(test_code, "booth5")
-        assert False, "expected BoothFileSetError"
+        raise AssertionError("expected BoothFileSetError")
     except BoothFileSetError as e:
         assert "more than one non-standard module" in str(e)
 
@@ -48,11 +48,17 @@ def test_normalize_test_module_import_raises_on_ambiguous_multiple_foreign_modul
 # build_plan / apply_plan -- csv mode
 # ---------------------------------------------------------------------------
 
+
 def _make_mission(booth_id, title="Test Booth"):
     from app.models import Mission
 
     mission = Mission(
-        title=title, type="code", narrative="n", cipher_word="X", booth_id=booth_id, order_index=booth_id,
+        title=title,
+        type="code",
+        narrative="n",
+        cipher_word="X",
+        booth_id=booth_id,
+        order_index=booth_id,
     )
     return mission
 
@@ -83,6 +89,7 @@ def test_build_plan_csv_mode_happy_path(app, tmp_path):
         assert total_test_cases == 2
 
         from app.models import Mission
+
         mission = Mission.query.filter_by(booth_id=1).first()
         assert mission.challenge.prompt == "Do the thing."
         assert len(mission.challenge.test_cases) == 2
@@ -92,6 +99,7 @@ def test_build_plan_csv_mode_happy_path(app, tmp_path):
 # ---------------------------------------------------------------------------
 # build_plan / apply_plan -- pytest mode
 # ---------------------------------------------------------------------------
+
 
 def test_build_plan_pytest_mode_happy_path_and_rewrites_import(app, tmp_path):
     from app.extensions import db
@@ -118,6 +126,7 @@ def test_build_plan_pytest_mode_happy_path_and_rewrites_import(app, tmp_path):
         apply_plan(plan)
 
         from app.models import Mission
+
         mission = Mission.query.filter_by(booth_id=6).first()
         assert mission.challenge.grading_mode == "pytest"
         assert mission.challenge.prompt == "Detect the brute force attack."

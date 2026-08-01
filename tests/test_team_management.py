@@ -25,14 +25,20 @@ def _setup(app):
         db.session.flush()
 
         mission = Mission(
-            title="Doubler Node", type="code", narrative="Double the input.",
-            cipher_word="DOUBLE", booth_id=1, order_index=1,
+            title="Doubler Node",
+            type="code",
+            narrative="Double the input.",
+            cipher_word="DOUBLE",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
         team.booth_current = mission.id
 
-        team_mission = TeamMission(team_id=team.id, mission_id=mission.id, status="passed", attempts=2, score=40)
+        team_mission = TeamMission(
+            team_id=team.id, mission_id=mission.id, status="passed", attempts=2, score=40
+        )
         db.session.add(team_mission)
         db.session.flush()
 
@@ -42,7 +48,11 @@ def _setup(app):
         # under SQLite's default lenient FK enforcement, then threw a real ForeignKeyViolation
         # the first time it ran against production Postgres. Included here so this exact class
         # of bug can never pass a local test run again.
-        db.session.add(CodeSubmission(team_mission_id=team_mission.id, code="print(1)", mode="submit", passed=True))
+        db.session.add(
+            CodeSubmission(
+                team_mission_id=team_mission.id, code="print(1)", mode="submit", passed=True
+            )
+        )
         db.session.add(Fragment(team_id=team.id, mission_id=mission.id, cipher_value="AB:CD"))
         db.session.add(ClearanceStamp(team_id=team.id, officer_id=officer.id, checkpoint_id=1))
         db.session.add(TeamMember(team_id=team.id, name="Alice"))
@@ -131,7 +141,9 @@ def test_reset_all_teams_clears_every_team_and_event_history(app, client):
         db.session.add(LeaderboardSnapshot(team_id=team_id, rank=1, score=40, integrity=80))
         db.session.add(EventLog(actor_role="game_master", action="pre_existing_noise"))
         db.session.commit()
-        assert EventLog.query.count() == 1  # just the noise row — _setup() writes DB rows directly, no audit calls
+        assert (
+            EventLog.query.count() == 1
+        )  # just the noise row — _setup() writes DB rows directly, no audit calls
 
     _login_gm(client)
     res = client.post("/mod/teams/reset-all")

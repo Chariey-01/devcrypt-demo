@@ -7,8 +7,8 @@ from gevent import monkey
 
 monkey.patch_all()
 
-from app import create_app
-from app.extensions import socketio
+from app import create_app  # noqa: E402 — must come after monkey.patch_all(), see comment above
+from app.extensions import socketio  # noqa: E402
 
 app = create_app()
 

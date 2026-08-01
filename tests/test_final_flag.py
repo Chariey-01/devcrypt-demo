@@ -56,7 +56,15 @@ def flag_app_and_missions():
         team.set_key("ALPHA01")
         db.session.add(team)
         missions = [
-            Mission(id=mid, title=f"Node {mid}", type="code", narrative="x", cipher_word="X", booth_id=mid, order_index=mid)
+            Mission(
+                id=mid,
+                title=f"Node {mid}",
+                type="code",
+                narrative="x",
+                cipher_word="X",
+                booth_id=mid,
+                order_index=mid,
+            )
             for mid in mission_ids
         ]
         db.session.add_all(missions)
@@ -76,7 +84,15 @@ def _build_app_with_missions(mission_ids, flag=REAL_FLAG, team_name="Alpha", tea
         team.set_key(team_key)
         db.session.add(team)
         missions = [
-            Mission(id=mid, title=f"Node {mid}", type="code", narrative="x", cipher_word="X", booth_id=mid, order_index=mid)
+            Mission(
+                id=mid,
+                title=f"Node {mid}",
+                type="code",
+                narrative="x",
+                cipher_word="X",
+                booth_id=mid,
+                order_index=mid,
+            )
             for mid in mission_ids
         ]
         db.session.add_all(missions)
@@ -98,7 +114,11 @@ def _pass_all_missions_with_fragments(app, team_id, mission_ids):
 
 
 def _post_flag(client, fragments):
-    return client.post("/missions/final-flag", data=json.dumps({"fragments": fragments}), content_type="application/json")
+    return client.post(
+        "/missions/final-flag",
+        data=json.dumps({"fragments": fragments}),
+        content_type="application/json",
+    )
 
 
 def _login_gm(app, client, email="gm@test.local"):
@@ -293,7 +313,9 @@ def test_event_flag_reconstruction_is_repeatable_across_ten_consecutive_runs():
 
         res = _post_flag(client, correct)
 
-        assert res.status_code == 200, f"run {i} failed with status {res.status_code}: {res.get_json()}"
+        assert res.status_code == 200, (
+            f"run {i} failed with status {res.status_code}: {res.get_json()}"
+        )
         flag = res.get_json()["flag"]
         assert flag == "M3T4V3R$3", f"run {i} produced {flag!r} instead of 'M3T4V3R$3'"
 
@@ -310,9 +332,8 @@ def test_fragment_order_is_deterministic_regardless_of_mission_id_list_order():
 
     assert forward.reconstruct(EVENT_MISSION_IDS) == "M3T4V3R$3"
     assert shuffled.reconstruct(list(reversed(EVENT_MISSION_IDS))) == "M3T4V3R$3"
-    assert (
-        forward.reconstruct(EVENT_MISSION_IDS)
-        == shuffled.reconstruct(sorted(EVENT_MISSION_IDS, key=lambda x: -x))
+    assert forward.reconstruct(EVENT_MISSION_IDS) == shuffled.reconstruct(
+        sorted(EVENT_MISSION_IDS, key=lambda x: -x)
     )
 
 
@@ -360,7 +381,10 @@ def test_final_flag_rejects_fragments_swapped_between_two_missions():
 
     mission_a, mission_b = EVENT_MISSION_IDS[0], EVENT_MISSION_IDS[1]
     swapped = {str(mid): f"F{mid}:XX" for mid in EVENT_MISSION_IDS}
-    swapped[str(mission_a)], swapped[str(mission_b)] = swapped[str(mission_b)], swapped[str(mission_a)]
+    swapped[str(mission_a)], swapped[str(mission_b)] = (
+        swapped[str(mission_b)],
+        swapped[str(mission_a)],
+    )
 
     res = _post_flag(client, swapped)
 

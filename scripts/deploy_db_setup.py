@@ -19,6 +19,7 @@ detects which situation it's in and does the right thing automatically:
 
 Either way, the database ends up fully current and correctly stamped. Safe to run repeatedly.
 """
+
 import os
 import sys
 
@@ -27,11 +28,11 @@ import sys
 # invocation.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from flask_migrate import stamp, upgrade
 from sqlalchemy import inspect
 
 from app import create_app
 from app.extensions import db
-from flask_migrate import stamp, upgrade
 
 
 def main():
@@ -41,7 +42,9 @@ def main():
         tracked = "alembic_version" in existing_tables
 
         if tracked:
-            print(f"Migration-tracked database detected ({len(existing_tables)} tables) — running migrations.")
+            print(
+                f"Migration-tracked database detected ({len(existing_tables)} tables) — running migrations."
+            )
             upgrade()
             print("Done: migrations applied (or already up to date).")
         elif not existing_tables:

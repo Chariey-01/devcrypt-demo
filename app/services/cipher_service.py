@@ -27,12 +27,10 @@ class CipherService:
     def board_for_mission(self, mission, revealed_indices):
         word = mission.cipher_word.upper()
         encoded = self.encode(word, self.shift_for(mission))
-        return "".join(
-            word[i] if i in revealed_indices else encoded[i] for i in range(len(word))
-        )
+        return "".join(word[i] if i in revealed_indices else encoded[i] for i in range(len(word)))
 
     def revealed_indices(self, mission, team_mission):
-        revealed = set()
+        revealed: set[int] = set()
         if not team_mission:
             return revealed
         word_len = len(mission.cipher_word)
@@ -49,7 +47,11 @@ class CipherService:
             pool_order = team_mission.assigned_question_ids()
             for answer in team_mission.knowledge_answers:
                 if answer.is_correct:
-                    position = pool_order.index(answer.question_id) if answer.question_id in pool_order else answer.question.order_index
+                    position = (
+                        pool_order.index(answer.question_id)
+                        if answer.question_id in pool_order
+                        else answer.question.order_index
+                    )
                     revealed.add(position % word_len)
         if team_mission.status in ("passed", "overridden"):
             revealed.update(range(word_len))
@@ -68,7 +70,9 @@ class CipherService:
                     "tagline": mission.tagline,
                     "display": self.board_for_mission(mission, revealed),
                     "revealed": [i in revealed for i in range(len(mission.cipher_word))],
-                    "complete": bool(team_mission and team_mission.status in ("passed", "overridden")),
+                    "complete": bool(
+                        team_mission and team_mission.status in ("passed", "overridden")
+                    ),
                 }
             )
         return board

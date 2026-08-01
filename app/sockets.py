@@ -44,7 +44,12 @@ def handle_connect():
         join_room(f"team-{team.id}")
         logger.info("socket connect sid=%s team=%r", request.sid, team.name)
     elif current_user.is_authenticated:
-        logger.info("socket connect sid=%s user=%r role=%s", request.sid, current_user.email, current_user.role)
+        logger.info(
+            "socket connect sid=%s user=%r role=%s",
+            request.sid,
+            current_user.email,
+            current_user.role,
+        )
     else:
         logger.info("socket connect sid=%s anonymous", request.sid)
     join_room(f"event-{event_id}")

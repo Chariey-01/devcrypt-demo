@@ -31,18 +31,34 @@ def _setup_auto_graded_mission(app, hint_limit=3, leaderboard_public=True):
         db.session.commit()
 
         mission = Mission(
-            title="Doubler Node", type="code", narrative="n", cipher_word="DOUBLE",
-            booth_id=1, order_index=1,
+            title="Doubler Node",
+            type="code",
+            narrative="n",
+            cipher_word="DOUBLE",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
-        challenge = Challenge(mission_id=mission.id, type="code", prompt="Double it.",
-                               grading_mode="auto", pass_threshold=100)
+        challenge = Challenge(
+            mission_id=mission.id,
+            type="code",
+            prompt="Double it.",
+            grading_mode="auto",
+            pass_threshold=100,
+        )
         db.session.add(challenge)
         db.session.flush()
         db.session.add(
-            TestCase(challenge_id=challenge.id, name="case", input_data="3", expected_output="6",
-                      weight=1, visibility="visible", order_index=0)
+            TestCase(
+                challenge_id=challenge.id,
+                name="case",
+                input_data="3",
+                expected_output="6",
+                weight=1,
+                visibility="visible",
+                order_index=0,
+            )
         )
         db.session.commit()
         return mission.id, team.id
@@ -94,7 +110,9 @@ def test_hint_request_is_capped_at_max_hints_per_booth_regardless_of_authored_co
         # team.score is clamped at 0 by award_points, so a team starting at 0 just stays at 0
         # here -- the actual per-hint deduction is tracked separately in hint_points.
         assert team.score == 0
-        assert team.hint_points == -(ScoringService.HINT_PENALTY * ScoringService.MAX_HINTS_PER_BOOTH)
+        assert team.hint_points == -(
+            ScoringService.HINT_PENALTY * ScoringService.MAX_HINTS_PER_BOOTH
+        )
 
 
 def test_leaderboard_public_false_hides_team_data(client, app):
@@ -135,7 +153,12 @@ def test_event_settings_get_and_post(client, app):
 
     res = client.post(
         "/mod/event-settings",
-        data={"name": "Career Fair 2026", "description": "desc", "hint_limit": "5", "leaderboard_public": "on"},
+        data={
+            "name": "Career Fair 2026",
+            "description": "desc",
+            "hint_limit": "5",
+            "leaderboard_public": "on",
+        },
     )
     assert res.status_code == 302
 

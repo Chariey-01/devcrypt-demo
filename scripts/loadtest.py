@@ -13,6 +13,7 @@ Usage:
     #    "app:create_app()"` — the real production worker config, not `python3 run.py`):
     python3 scripts/loadtest.py --url http://127.0.0.1:5000 --teams 40
 """
+
 import argparse
 import os
 import statistics
@@ -203,10 +204,18 @@ def run_load_test(base_url, num_teams):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--seed", action="store_true", help="Seed load-test teams/mission into the DB first.")
-    parser.add_argument("--teams", type=int, default=40, help="Number of teams to seed/simulate (default 40).")
-    parser.add_argument("--url", default="http://127.0.0.1:5000", help="Base URL of the running server.")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--seed", action="store_true", help="Seed load-test teams/mission into the DB first."
+    )
+    parser.add_argument(
+        "--teams", type=int, default=40, help="Number of teams to seed/simulate (default 40)."
+    )
+    parser.add_argument(
+        "--url", default="http://127.0.0.1:5000", help="Base URL of the running server."
+    )
     args = parser.parse_args()
 
     if args.seed:

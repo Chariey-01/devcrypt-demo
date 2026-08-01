@@ -237,7 +237,9 @@ def test_score_auto_graded_partial_only_awards_the_delta_above_best_so_far():
     first = service.score_auto_graded_partial(team, team_mission, DummyGradingResult(40))
     second = service.score_auto_graded_partial(team, team_mission, DummyGradingResult(70))
 
-    assert second == round(service.CHALLENGE_COMPLETE * 0.7) - round(service.CHALLENGE_COMPLETE * 0.4)
+    assert second == round(service.CHALLENGE_COMPLETE * 0.7) - round(
+        service.CHALLENGE_COMPLETE * 0.4
+    )
     assert team.score == first + second
     assert team_mission.best_percent_score == 70
 

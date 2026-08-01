@@ -27,6 +27,7 @@ stop calling sync_knowledge_bank.py and just let Agents edit KnowledgeQuestion r
 through the existing Agent Dashboard UI -- the serving/answering/reveal code already reads
 from the database either way.
 """
+
 from dataclasses import dataclass
 
 CATEGORIES = (
@@ -401,7 +402,7 @@ BOOTH_QUESTION_BANKS = {
             key="wfa-06",
             category="DevOps",
             text=(
-                "Which of these best describes what \"SaaS\" (Software as a Service) means for "
+                'Which of these best describes what "SaaS" (Software as a Service) means for '
                 "a company buying an HR platform instead of building one?"
             ),
             options=(
@@ -506,7 +507,7 @@ BOOTH_QUESTION_BANKS = {
             ),
             options=(
                 "Rearchitecting the entire application into microservices first",
-                "\"Lift and shift\" -- moving the existing application largely as-is onto cloud infrastructure",
+                '"Lift and shift" -- moving the existing application largely as-is onto cloud infrastructure',
                 "Rewriting the system in a different programming language",
                 "Deleting the payroll system and starting over",
             ),
@@ -585,8 +586,8 @@ BOOTH_QUESTION_BANKS = {
             key="unispot-02",
             category="Cybersecurity",
             text=(
-                "A student notices a university application form's URL starts with \"http://\" "
-                "instead of \"https://\" and their advisor tells them to be cautious. Why?"
+                'A student notices a university application form\'s URL starts with "http://" '
+                'instead of "https://" and their advisor tells them to be cautious. Why?'
             ),
             options=(
                 "http:// pages load faster and that's the only difference",
@@ -653,7 +654,7 @@ BOOTH_QUESTION_BANKS = {
             category="Cybersecurity",
             text=(
                 "A phishing email impersonates a university's admissions office, asking a "
-                "student to \"verify\" their application by entering their password on a "
+                'student to "verify" their application by entering their password on a '
                 "look-alike site. What is the best way to verify the email is legitimate?"
             ),
             options=(
@@ -838,7 +839,7 @@ BOOTH_QUESTION_BANKS = {
             key="ctg-02",
             category="Cybersecurity",
             text=(
-                "Which best describes what a proper \"secure wipe\" does that simple deletion "
+                'Which best describes what a proper "secure wipe" does that simple deletion '
                 "does not?"
             ),
             options=(
@@ -854,7 +855,7 @@ BOOTH_QUESTION_BANKS = {
             key="ctg-03",
             category="Software Engineering",
             text=(
-                "What best describes \"circular economy\" as applied to electronics refurbishment?"
+                'What best describes "circular economy" as applied to electronics refurbishment?'
             ),
             options=(
                 "Manufacturing new devices as fast as possible to meet demand",
@@ -868,9 +869,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="ctg-04",
             category="Software Engineering",
-            text=(
-                "Which of the following is generally classified as \"e-waste\"?"
-            ),
+            text=('Which of the following is generally classified as "e-waste"?'),
             options=(
                 "A decommissioned company laptop no longer in use",
                 "A cloud storage subscription",
@@ -884,7 +883,7 @@ BOOTH_QUESTION_BANKS = {
             key="ctg-05",
             category="Cybersecurity",
             text=(
-                "A refurbishment hub's inventory tracker shows a device as \"wiped\" but an "
+                'A refurbishment hub\'s inventory tracker shows a device as "wiped" but an '
                 "audit later finds recoverable personal data on it. What does this most likely "
                 "indicate?"
             ),
@@ -934,8 +933,8 @@ BOOTH_QUESTION_BANKS = {
             key="ctg-08",
             category="Testing",
             text=(
-                "A tracking system logs \"1\" for a device that still needs a secure wipe. If "
-                "the flag is accidentally flipped to \"0\" by a software bug, what is the "
+                'A tracking system logs "1" for a device that still needs a secure wipe. If '
+                'the flag is accidentally flipped to "0" by a software bug, what is the '
                 "real-world consequence?"
             ),
             options=(
@@ -1002,7 +1001,7 @@ BOOTH_QUESTION_BANKS = {
             category="Software Engineering",
             text=(
                 "A batch of 200 devices needs a status check: how many are unwiped vs. wiped. "
-                "Which is the correct way to compute \"how many entries equal a specific value\" "
+                'Which is the correct way to compute "how many entries equal a specific value" '
                 "in a list of flags?"
             ),
             options=(
@@ -1034,7 +1033,7 @@ BOOTH_QUESTION_BANKS = {
             key="ctg-14",
             category="Cybersecurity",
             text=(
-                "Which of these is the most accurate description of what \"data breach\" means "
+                'Which of these is the most accurate description of what "data breach" means '
                 "in the context of improperly wiped refurbished devices?"
             ),
             options=(
@@ -1152,9 +1151,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="zuberi-04",
             category="Software Engineering",
-            text=(
-                "In game development, \"FPS\" most commonly refers to which of the following?"
-            ),
+            text=('In game development, "FPS" most commonly refers to which of the following?'),
             options=(
                 "Frames Per Second, a measure of rendering smoothness",
                 "File Processing Server",
@@ -1206,7 +1203,7 @@ BOOTH_QUESTION_BANKS = {
                 "wait times compared to the old one. What is the most rigorous way to find out?"
             ),
             options=(
-                "Ask the community on social media which one they \"feel\" is faster",
+                'Ask the community on social media which one they "feel" is faster',
                 "Run an A/B test comparing wait times between the old and new algorithm under similar conditions",
                 "Assume the newer algorithm is always better since it's newer",
                 "Only test it internally with the development team, who know the game well",
@@ -1284,8 +1281,8 @@ BOOTH_QUESTION_BANKS = {
             key="zuberi-12",
             category="Networking",
             text=(
-                "Which best describes the difference between a game's \"client\" and its "
-                "\"server\" in an online multiplayer architecture?"
+                'Which best describes the difference between a game\'s "client" and its '
+                '"server" in an online multiplayer architecture?'
             ),
             options=(
                 "There is no meaningful difference -- they run identical code",
@@ -1352,7 +1349,7 @@ BOOTH_QUESTION_BANKS = {
             key="tbm-01",
             category="Cybersecurity",
             text=(
-                "A company adopts a \"Zero Trust\" security architecture. What does that "
+                'A company adopts a "Zero Trust" security architecture. What does that '
                 "fundamentally assume, compared to a traditional perimeter-based model?"
             ),
             options=(
@@ -1367,9 +1364,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="tbm-02",
             category="Cybersecurity",
-            text=(
-                "What is the primary purpose of a Security Operations Center (SOC)?"
-            ),
+            text=("What is the primary purpose of a Security Operations Center (SOC)?"),
             options=(
                 "Monitor systems and respond to security incidents in real time",
                 "Design marketing campaigns for the company",
@@ -1399,9 +1394,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="tbm-04",
             category="AI/ML",
-            text=(
-                "In AI/ML, what is \"training data\" used for?"
-            ),
+            text=('In AI/ML, what is "training data" used for?'),
             options=(
                 "Teaching a model to recognize patterns by learning from examples",
                 "Storing user passwords securely",
@@ -1431,9 +1424,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="tbm-06",
             category="Cybersecurity",
-            text=(
-                "Which best describes the difference between a vulnerability and an exploit?"
-            ),
+            text=("Which best describes the difference between a vulnerability and an exploit?"),
             options=(
                 "They are exactly the same thing",
                 "A vulnerability is a weakness in a system; an exploit is a method or code that takes advantage of that weakness",
@@ -1511,9 +1502,7 @@ BOOTH_QUESTION_BANKS = {
         BankQuestion(
             key="tbm-11",
             category="Cybersecurity",
-            text=(
-                "Which of these best describes the purpose of a \"penetration test\"?"
-            ),
+            text=('Which of these best describes the purpose of a "penetration test"?'),
             options=(
                 "Authorized, simulated attacks against a system to find exploitable weaknesses before real attackers do",
                 "A routine performance benchmark with no security relevance",
@@ -1577,7 +1566,7 @@ BOOTH_QUESTION_BANKS = {
             key="tbm-15",
             category="Cybersecurity",
             text=(
-                "A client's cybersecurity policy requires \"defense in depth.\" What does that "
+                'A client\'s cybersecurity policy requires "defense in depth." What does that '
                 "principle actually mean?"
             ),
             options=(

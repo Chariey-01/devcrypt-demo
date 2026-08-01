@@ -21,20 +21,20 @@ import os
 from flask import Flask, render_template
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from . import sockets  # noqa: F401 — registers the @socketio.on("connect") handler
+from .blueprints.agent import agent_bp
+from .blueprints.auth import auth_bp
+from .blueprints.cipher import cipher_bp
+from .blueprints.leaderboard import leaderboard_bp
+from .blueprints.missions import missions_bp
+from .blueprints.mod import mod_bp
+from .blueprints.portals import portals_bp
+from .blueprints.scoring import scoring_bp
+from .blueprints.security import security_bp
 from .config import Config
 from .errors import register_error_handlers
 from .extensions import bcrypt, csrf, db, limiter, login_manager, migrate, socketio, talisman
-from .blueprints.auth import auth_bp
-from .blueprints.missions import missions_bp
-from .blueprints.scoring import scoring_bp
-from .blueprints.cipher import cipher_bp
-from .blueprints.leaderboard import leaderboard_bp
-from .blueprints.mod import mod_bp
-from .blueprints.security import security_bp
-from .blueprints.portals import portals_bp
-from .blueprints.agent import agent_bp
 from .icons import icon
-from . import sockets  # noqa: F401 — registers the @socketio.on("connect") handler
 
 
 def _configure_logging():
@@ -60,7 +60,7 @@ def create_app(config_class=Config):
     # own IP — wrong for both audit-log IP capture (app/services/audit_service.py) and
     # rate-limit keying (Flask-Limiter, below). x_for=1 trusts exactly one hop of
     # X-Forwarded-For, matching Railway's single reverse-proxy topology.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)  # type: ignore[method-assign]
 
     db.init_app(app)
     if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):

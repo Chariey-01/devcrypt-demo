@@ -14,8 +14,12 @@ def _setup(app):
         db.session.add_all([team_a, team_b])
 
         mission = Mission(
-            title="Doubler Node", type="code", narrative="n", cipher_word="DOUBLE",
-            booth_id=1, order_index=1,
+            title="Doubler Node",
+            type="code",
+            narrative="n",
+            cipher_word="DOUBLE",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
@@ -25,27 +29,62 @@ def _setup(app):
 
         started = datetime.utcnow() - timedelta(minutes=10)
         tm_a = TeamMission(
-            team_id=team_a.id, mission_id=mission.id, status="passed",
-            started_at=started, completed_at=started + timedelta(minutes=4), hint_used=True,
+            team_id=team_a.id,
+            mission_id=mission.id,
+            status="passed",
+            started_at=started,
+            completed_at=started + timedelta(minutes=4),
+            hint_used=True,
         )
         tm_b = TeamMission(
-            team_id=team_b.id, mission_id=mission.id, status="in_progress",
-            started_at=started, completed_at=None,
+            team_id=team_b.id,
+            mission_id=mission.id,
+            status="in_progress",
+            started_at=started,
+            completed_at=None,
         )
         db.session.add_all([tm_a, tm_b])
         db.session.flush()
 
         db.session.add_all(
             [
-                CodeSubmission(team_mission_id=tm_a.id, code="c", mode="submit", total_tests=2,
-                                passed_tests=2, percent_score=100, passed=True),
-                CodeSubmission(team_mission_id=tm_b.id, code="c", mode="submit", total_tests=2,
-                                passed_tests=0, percent_score=0, passed=False),
-                CodeSubmission(team_mission_id=tm_b.id, code="c", mode="submit", total_tests=2,
-                                passed_tests=0, percent_score=0, passed=False),
+                CodeSubmission(
+                    team_mission_id=tm_a.id,
+                    code="c",
+                    mode="submit",
+                    total_tests=2,
+                    passed_tests=2,
+                    percent_score=100,
+                    passed=True,
+                ),
+                CodeSubmission(
+                    team_mission_id=tm_b.id,
+                    code="c",
+                    mode="submit",
+                    total_tests=2,
+                    passed_tests=0,
+                    percent_score=0,
+                    passed=False,
+                ),
+                CodeSubmission(
+                    team_mission_id=tm_b.id,
+                    code="c",
+                    mode="submit",
+                    total_tests=2,
+                    passed_tests=0,
+                    percent_score=0,
+                    passed=False,
+                ),
                 # run_visible submissions must NOT count toward pass/fail or challenge stats.
-                CodeSubmission(team_mission_id=tm_a.id, code="c", mode="run_visible", total_tests=1,
-                                passed_tests=1, percent_score=100, passed=True),
+                CodeSubmission(
+                    team_mission_id=tm_a.id,
+                    code="c",
+                    mode="run_visible",
+                    total_tests=1,
+                    passed_tests=1,
+                    percent_score=100,
+                    passed=True,
+                ),
             ]
         )
         db.session.commit()

@@ -17,12 +17,18 @@ def _setup(app):
         db.session.add_all([gm, team])
 
         mission = Mission(
-            title="Doubler Node", type="code", narrative="n", cipher_word="DOUBLE",
-            booth_id=1, order_index=1,
+            title="Doubler Node",
+            type="code",
+            narrative="n",
+            cipher_word="DOUBLE",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
-        challenge = Challenge(mission_id=mission.id, type="code", prompt="p", grading_mode="auto", difficulty="easy")
+        challenge = Challenge(
+            mission_id=mission.id, type="code", prompt="p", grading_mode="auto", difficulty="easy"
+        )
         db.session.add(challenge)
         db.session.flush()
 
@@ -30,8 +36,15 @@ def _setup(app):
         db.session.add(tm)
         db.session.flush()
         db.session.add(
-            CodeSubmission(team_mission_id=tm.id, code="c", mode="submit", total_tests=2,
-                            passed_tests=2, percent_score=100, passed=True)
+            CodeSubmission(
+                team_mission_id=tm.id,
+                code="c",
+                mode="submit",
+                total_tests=2,
+                passed_tests=2,
+                percent_score=100,
+                passed=True,
+            )
         )
         db.session.commit()
 

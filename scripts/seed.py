@@ -63,10 +63,10 @@ MISSIONS = [
         "challenge": {
             "prompt": (
                 "You'll receive one line of space-separated feature flag states, each exactly "
-                "\"on\" or \"off\". Print how many flags are \"on\" — that's how many features "
+                '"on" or "off". Print how many flags are "on" — that\'s how many features '
                 "are actually ready for this MVP launch."
             ),
-            "hint_text": "Split the line on whitespace, then count how many entries equal \"on\".",
+            "hint_text": 'Split the line on whitespace, then count how many entries equal "on".',
             "starter_code": "flags = input().split()\n",
             "test_cases": [
                 ("visible case", "on off on on", "3", "visible"),
@@ -78,7 +78,7 @@ MISSIONS = [
         },
         "knowledge_questions": [
             {
-                "question_text": "What does \"MVP\" stand for in product development?",
+                "question_text": 'What does "MVP" stand for in product development?',
                 "options": [
                     ("Minimum Viable Product", True),
                     ("Most Valuable Programmer", False),
@@ -96,7 +96,7 @@ MISSIONS = [
                 ],
             },
             {
-                "question_text": "In version control, what does a \"merge conflict\" mean?",
+                "question_text": 'In version control, what does a "merge conflict" mean?',
                 "options": [
                     ("Two branches changed the same code in different ways", True),
                     ("The repository has been permanently corrupted", False),
@@ -152,7 +152,7 @@ MISSIONS = [
                 ],
             },
             {
-                "question_text": "In cloud computing, what does \"SaaS\" stand for?",
+                "question_text": 'In cloud computing, what does "SaaS" stand for?',
                 "options": [
                     ("Software as a Service", True),
                     ("Server as Storage", False),
@@ -257,11 +257,11 @@ MISSIONS = [
         ),
         "challenge": {
             "prompt": (
-                "You'll receive one line of space-separated flags, one per device: \"1\" means "
-                "the device still has data and needs a secure wipe, \"0\" means it's already "
+                'You\'ll receive one line of space-separated flags, one per device: "1" means '
+                'the device still has data and needs a secure wipe, "0" means it\'s already '
                 "wiped. Print how many devices in the batch still need wiping."
             ),
-            "hint_text": "Count how many entries in the line equal \"1\".",
+            "hint_text": 'Count how many entries in the line equal "1".',
             "starter_code": "devices = input().split()\n",
             "test_cases": [
                 ("visible case", "0 1 0 1 1", "3", "visible"),
@@ -273,7 +273,7 @@ MISSIONS = [
         },
         "knowledge_questions": [
             {
-                "question_text": "Why is \"data wiping\" different from simply deleting a file?",
+                "question_text": 'Why is "data wiping" different from simply deleting a file?',
                 "options": [
                     ("Wiping overwrites the data so it can't be recovered", True),
                     ("Deleting a file physically destroys the hard drive", False),
@@ -291,7 +291,7 @@ MISSIONS = [
                 ],
             },
             {
-                "question_text": "Which of these is generally considered \"e-waste\"?",
+                "question_text": 'Which of these is generally considered "e-waste"?',
                 "options": [
                     ("A decommissioned company laptop", True),
                     ("A software license key", False),
@@ -346,7 +346,7 @@ MISSIONS = [
                 ],
             },
             {
-                "question_text": "In game development, what does \"FPS\" commonly refer to?",
+                "question_text": 'In game development, what does "FPS" commonly refer to?',
                 "options": [
                     ("Frames Per Second", True),
                     ("File Processing Server", False),
@@ -400,9 +400,12 @@ MISSIONS = [
         },
         "knowledge_questions": [
             {
-                "question_text": "What does \"Zero Trust\" security architecture assume?",
+                "question_text": 'What does "Zero Trust" security architecture assume?',
                 "options": [
-                    ("No user or device should be trusted by default, even inside the network", True),
+                    (
+                        "No user or device should be trusted by default, even inside the network",
+                        True,
+                    ),
                     ("All internal network traffic is automatically safe", False),
                     ("Passwords are no longer necessary", False),
                     ("Only external users need to be verified", False),
@@ -418,7 +421,7 @@ MISSIONS = [
                 ],
             },
             {
-                "question_text": "In AI/ML, what is \"training data\" used for?",
+                "question_text": 'In AI/ML, what is "training data" used for?',
                 "options": [
                     ("Teaching a model to recognize patterns", True),
                     ("Storing user passwords securely", False),
@@ -449,7 +452,9 @@ def seed_demo():
             agent.set_password("changeme")
             db.session.add(agent)
 
-        officer = User(email="officer@devcrypt.local", role="security_officer", full_name="Security Officer")
+        officer = User(
+            email="officer@devcrypt.local", role="security_officer", full_name="Security Officer"
+        )
         officer.set_password("changeme")
         db.session.add(officer)
 
@@ -486,7 +491,9 @@ def seed_demo():
 
             label, file_type, content = spec["evidence"]
             db.session.add(
-                EvidenceFile(mission_id=mission.id, label=label, file_type=file_type, content=content)
+                EvidenceFile(
+                    mission_id=mission.id, label=label, file_type=file_type, content=content
+                )
             )
 
             challenge = spec["challenge"]
@@ -504,7 +511,9 @@ def seed_demo():
             db.session.add(challenge_row)
             db.session.flush()
 
-            for tc_index, (tc_name, tc_input, tc_expected, tc_visibility) in enumerate(challenge["test_cases"]):
+            for tc_index, (tc_name, tc_input, tc_expected, tc_visibility) in enumerate(
+                challenge["test_cases"]
+            ):
                 db.session.add(
                     TestCase(
                         challenge_id=challenge_row.id,
@@ -551,7 +560,9 @@ def seed_demo():
         print("  Booth Agents — agent1@devcrypt.local, agent2@devcrypt.local / changeme")
         print("  Security     — officer@devcrypt.local / changeme")
         print("  Booths       — " + ", ".join(m["title"] for m in MISSIONS))
-        print(f"  Knowledge Check — {questions_created} questions synced across {booths_synced} booths (app/knowledge_bank.py)")
+        print(
+            f"  Knowledge Check — {questions_created} questions synced across {booths_synced} booths (app/knowledge_bank.py)"
+        )
 
 
 if __name__ == "__main__":

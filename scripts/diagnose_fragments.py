@@ -24,6 +24,7 @@ Usage:
     # Against Railway (env vars already injected):
     railway run python3 scripts/diagnose_fragments.py
 """
+
 import os
 import sys
 
@@ -73,7 +74,11 @@ with app.app_context():
         seen_values = {}
         for f in fragments:
             total_fragments += 1
-            expected = cipher.generate_fragment(team.id, f.mission_id, event_salt) if event_salt else "(no salt)"
+            expected = (
+                cipher.generate_fragment(team.id, f.mission_id, event_salt)
+                if event_salt
+                else "(no salt)"
+            )
             match = "OK" if f.cipher_value == expected else "MISMATCH"
             if match == "MISMATCH":
                 total_mismatches += 1

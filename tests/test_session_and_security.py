@@ -2,9 +2,10 @@
 runs with WTF_CSRF_ENABLED/RATELIMIT_ENABLED off (see conftest.TestConfig) so every other test
 file can post like a same-origin fetch() call without a token -- this file spins up its own app
 with both re-enabled to verify the protections actually engage."""
+
 from app import create_app
 from app.extensions import db
-from app.models import Team, User
+from app.models import Team
 from tests.conftest import TestConfig
 
 
@@ -75,7 +76,7 @@ def test_post_with_csrf_token_from_the_page_succeeds():
     client = app.test_client()
     page = client.get("/auth/team-login").get_data(as_text=True)
     start = page.index('name="csrf_token" value="') + len('name="csrf_token" value="')
-    token = page[start:page.index('"', start)]
+    token = page[start : page.index('"', start)]
 
     res = client.post(
         "/auth/team-login", data={"name": "Alpha", "key": "ALPHA01", "csrf_token": token}

@@ -11,6 +11,7 @@ Usage:
     # Against Railway: copy DATABASE_URL from the Railway dashboard's Postgres service
     # (or run this from a shell where it's already exported the way deploy_db_setup.py expects).
 """
+
 import os
 import sys
 
@@ -43,7 +44,9 @@ with app.app_context():
             grading = c.grading_mode or "(none)"
             ctype = c.type or "(none)"
             test_count = str(len(c.test_cases)) if grading == "auto" else "-"
-        print(f"{m.id:<4}{m.booth_id:<7}{m.status:<11}{ctype:<7}{grading:<16}{test_count:<7}{m.title}")
+        print(
+            f"{m.id:<4}{m.booth_id:<7}{m.status:<11}{ctype:<7}{grading:<16}{test_count:<7}{m.title}"
+        )
 
     print("\nStatus breakdown:", ", ".join(f"{k}={v}" for k, v in sorted(status_counts.items())))
     published = status_counts.get("published", 0)
@@ -56,12 +59,19 @@ with app.app_context():
 
     no_challenge = [m for m in missions if m.challenge is None]
     if no_challenge:
-        print(f"\n{len(no_challenge)} mission(s) have NO Challenge row at all yet: " + ", ".join(m.title for m in no_challenge))
+        print(
+            f"\n{len(no_challenge)} mission(s) have NO Challenge row at all yet: "
+            + ", ".join(m.title for m in no_challenge)
+        )
 
-    manual_code = [m for m in missions if m.challenge and m.type == "code" and m.challenge.grading_mode != "auto"]
+    manual_code = [
+        m
+        for m in missions
+        if m.challenge and m.type == "code" and m.challenge.grading_mode != "auto"
+    ]
     if manual_code:
         print(
-            f"\n{len(manual_code)} mission(s) are type=\"code\" but grading_mode is NOT \"auto\" "
+            f'\n{len(manual_code)} mission(s) are type="code" but grading_mode is NOT "auto" '
             "(so they show the plain answer box, not the code editor): "
             + ", ".join(m.title for m in manual_code)
         )

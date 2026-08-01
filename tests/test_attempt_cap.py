@@ -11,15 +11,23 @@ def _setup_flag_mission(app, max_attempts=1):
         db.session.commit()
 
         mission = Mission(
-            title="Trailing Node", type="flag", narrative="unused",
-            cipher_word="TRAIL", booth_id=1, order_index=1,
+            title="Trailing Node",
+            type="flag",
+            narrative="unused",
+            cipher_word="TRAIL",
+            booth_id=1,
+            order_index=1,
         )
         db.session.add(mission)
         db.session.flush()
 
         challenge = Challenge(
-            mission_id=mission.id, type="flag", prompt="Find the flag.",
-            grading_mode="manual_review", answer_key="FLAG{RIGHT}", max_attempts=max_attempts,
+            mission_id=mission.id,
+            type="flag",
+            prompt="Find the flag.",
+            grading_mode="manual_review",
+            answer_key="FLAG{RIGHT}",
+            max_attempts=max_attempts,
         )
         db.session.add(challenge)
         db.session.commit()
@@ -63,5 +71,3 @@ def test_flag_challenge_without_max_attempts_is_unlimited(app, client):
     res = client.post("/missions/challenge/submit", json={"answer": "FLAG{RIGHT}"})
     assert res.status_code == 200
     assert res.get_json()["correct"] is True
-
-

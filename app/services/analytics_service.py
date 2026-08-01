@@ -122,7 +122,9 @@ class AnalyticsService:
         event_id = self._event_id(event_id)
         teams = Team.query.filter(event_scope_filter(Team, event_id)).all()
         missions = (
-            Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, event_id))
+            Mission.query.filter(
+                Mission.status == "published", event_scope_filter(Mission, event_id)
+            )
             .order_by(Mission.order_index)
             .all()
         )

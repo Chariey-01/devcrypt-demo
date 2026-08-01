@@ -2,8 +2,18 @@
 at a time" invariant. Phase 1a/1b covered the schema and query scoping; this is the first phase
 where a second Event row can actually be created through the product itself, not just directly
 via the ORM in a test fixture."""
+
 from app.extensions import db
-from app.models import Challenge, Event, Hint, KnowledgeOption, KnowledgeQuestion, Mission, TestCase, User
+from app.models import (
+    Challenge,
+    Event,
+    Hint,
+    KnowledgeOption,
+    KnowledgeQuestion,
+    Mission,
+    TestCase,
+    User,
+)
 
 
 def _login_gm(client):
@@ -120,18 +130,30 @@ def test_duplicate_event_copies_missions_and_challenge_content_not_teams_or_logs
     with app.app_context():
         source_event = Event.query.first()
         mission = Mission(
-            title="Node", type="code", narrative="n", cipher_word="X",
-            booth_id=1, order_index=1, status="published", event_id=source_event.id,
+            title="Node",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+            status="published",
+            event_id=source_event.id,
         )
         db.session.add(mission)
         db.session.flush()
         challenge = Challenge(
-            mission_id=mission.id, type="code", prompt="p", grading_mode="auto", pass_threshold=80,
+            mission_id=mission.id,
+            type="code",
+            prompt="p",
+            grading_mode="auto",
+            pass_threshold=80,
         )
         db.session.add(challenge)
         db.session.flush()
         db.session.add(
-            TestCase(challenge_id=challenge.id, name="t1", expected_output="6", weight=1, order_index=0)
+            TestCase(
+                challenge_id=challenge.id, name="t1", expected_output="6", weight=1, order_index=0
+            )
         )
         db.session.add(Hint(challenge_id=challenge.id, text="hint 1", order_index=0))
         question = KnowledgeQuestion(mission_id=mission.id, question_text="q?", order_index=0)
@@ -142,7 +164,9 @@ def test_duplicate_event_copies_missions_and_challenge_content_not_teams_or_logs
         source_event_id = source_event.id
 
     res = client.post(
-        f"/mod/events/{source_event_id}/duplicate", data={"name": "2027 copy"}, follow_redirects=True
+        f"/mod/events/{source_event_id}/duplicate",
+        data={"name": "2027 copy"},
+        follow_redirects=True,
     )
     assert res.status_code == 200
 

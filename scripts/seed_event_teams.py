@@ -13,6 +13,7 @@ Usage:
     python3 scripts/seed_event_teams.py             # prints a plan, asks to confirm
     python3 scripts/seed_event_teams.py --yes        # skip the confirmation prompt
 """
+
 import argparse
 import os
 import sys
@@ -45,7 +46,9 @@ def build_plan():
             continue
         mission = Mission.query.filter_by(booth_id=booth_id).first()
         if mission is None:
-            skipped.append((name, f"no Mission with booth_id={booth_id} -- can't set a starting booth"))
+            skipped.append(
+                (name, f"no Mission with booth_id={booth_id} -- can't set a starting booth")
+            )
             continue
         plan.append((name, key, mission))
     return plan, skipped
@@ -61,8 +64,12 @@ def apply_plan(plan):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--yes", action="store_true", help="Apply without an interactive confirm prompt.")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--yes", action="store_true", help="Apply without an interactive confirm prompt."
+    )
     args = parser.parse_args()
 
     app = create_app()
@@ -81,7 +88,9 @@ def main():
 
         print(f"{len(plan)} team(s) will be created:\n")
         for name, key, mission in plan:
-            print(f"  {name}  key={key}  starting_booth=booth_id {mission.booth_id} ({mission.title})")
+            print(
+                f"  {name}  key={key}  starting_booth=booth_id {mission.booth_id} ({mission.title})"
+            )
         print()
 
         if not args.yes:

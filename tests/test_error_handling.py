@@ -2,6 +2,7 @@
 _unauthorized/_forbidden handlers in app/__init__.py. AJAX-style requests (no explicit
 text/html Accept, matching how this app's own fetch() calls behave) get a JSON body; a plain
 browser navigation gets a friendly, on-brand page."""
+
 from app.extensions import db
 from app.models import User
 

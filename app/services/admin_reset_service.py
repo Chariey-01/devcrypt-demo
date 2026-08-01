@@ -24,9 +24,9 @@ class AdminResetService:
         # TeamMission row.
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
-            CodeSubmission.query.filter(CodeSubmission.team_mission_id.in_(team_mission_ids)).delete(
-                synchronize_session=False
-            )
+            CodeSubmission.query.filter(
+                CodeSubmission.team_mission_id.in_(team_mission_ids)
+            ).delete(synchronize_session=False)
             TeamKnowledgeAnswer.query.filter(
                 TeamKnowledgeAnswer.team_mission_id.in_(team_mission_ids)
             ).delete(synchronize_session=False)
@@ -54,9 +54,9 @@ class AdminResetService:
         reset_team, for the same reason."""
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
-            CodeSubmission.query.filter(CodeSubmission.team_mission_id.in_(team_mission_ids)).delete(
-                synchronize_session=False
-            )
+            CodeSubmission.query.filter(
+                CodeSubmission.team_mission_id.in_(team_mission_ids)
+            ).delete(synchronize_session=False)
             TeamKnowledgeAnswer.query.filter(
                 TeamKnowledgeAnswer.team_mission_id.in_(team_mission_ids)
             ).delete(synchronize_session=False)
@@ -69,7 +69,11 @@ class AdminResetService:
         real event begins — not a mid-event single-team retry, which is reset_team's job.
         Scoped to one event (event_id=None resets literally everything, every event ever
         run — never what a GM resetting "this event" before it starts actually wants)."""
-        teams = Team.query.filter(event_scope_filter(Team, event_id)).all() if event_id is not None else Team.query.all()
+        teams = (
+            Team.query.filter(event_scope_filter(Team, event_id)).all()
+            if event_id is not None
+            else Team.query.all()
+        )
         for team in teams:
             self._clear_team_progress(team)
         if event_id is not None:
@@ -77,7 +81,9 @@ class AdminResetService:
             LeaderboardSnapshot.query.filter(LeaderboardSnapshot.team_id.in_(team_ids)).delete(
                 synchronize_session=False
             )
-            EventLog.query.filter(event_scope_filter(EventLog, event_id)).delete(synchronize_session=False)
+            EventLog.query.filter(event_scope_filter(EventLog, event_id)).delete(
+                synchronize_session=False
+            )
         else:
             LeaderboardSnapshot.query.delete(synchronize_session=False)
             EventLog.query.delete(synchronize_session=False)

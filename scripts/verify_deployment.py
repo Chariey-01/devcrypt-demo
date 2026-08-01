@@ -27,6 +27,7 @@ Usage:
 
 Exit code 0 if every check passes, 1 otherwise — safe to use as a gate.
 """
+
 import argparse
 import os
 import sys
@@ -55,7 +56,7 @@ def seed_grading_check_mission(team_name):
     # serving. Idempotent: safe to run before every verification pass.
     from app import create_app
     from app.extensions import db
-    from app.models import Challenge, Mission, TestCase, Team, User
+    from app.models import Challenge, Mission, Team, TestCase, User
 
     app = create_app()
     with app.app_context():
@@ -149,7 +150,11 @@ def check_env_and_connectivity(base_url, r):
             f"status={resp.status_code} body={resp.text[:200]}",
         )
     except Exception as exc:
-        r.record("Environment / PostgreSQL connectivity (/healthz)", False, f"{type(exc).__name__}: {exc}")
+        r.record(
+            "Environment / PostgreSQL connectivity (/healthz)",
+            False,
+            f"{type(exc).__name__}: {exc}",
+        )
 
     try:
         resp = requests.get(f"{base_url}/static/socket.io.min.js", timeout=15)
@@ -217,12 +222,14 @@ def check_session_persistence(base_url, r, session):
         return
     try:
         results = []
-        for i in range(3):
+        for _ in range(3):
             resp = session.get(f"{base_url}/missions/status", timeout=15)
             results.append(resp.status_code)
             time.sleep(0.3)
         ok = all(code == 200 for code in results)
-        r.record("Session persistence (3 sequential requests, same cookie)", ok, f"statuses={results}")
+        r.record(
+            "Session persistence (3 sequential requests, same cookie)", ok, f"statuses={results}"
+        )
     except Exception as exc:
         r.record("Session persistence", False, f"{type(exc).__name__}: {exc}")
 
@@ -266,7 +273,9 @@ def check_submission_and_grading(base_url, r, session, mission):
     # submit-path's 60s cooldown penalty, so testing fail-then-pass here doesn't lock out the
     # subsequent /submit call the way testing them in that order via /submit would.
     try:
-        resp = session.post(f"{base_url}/missions/challenge/run-tests", json={"code": "print('wrong')"}, timeout=45)
+        resp = session.post(
+            f"{base_url}/missions/challenge/run-tests", json={"code": "print('wrong')"}, timeout=45
+        )
         body = resp.json() if resp.status_code == 200 else {}
         r.record(
             "Automated grading (fail case, via run-tests)",
@@ -274,11 +283,15 @@ def check_submission_and_grading(base_url, r, session, mission):
             f"status={resp.status_code} passed_tests={body.get('passed_tests')}",
         )
     except Exception as exc:
-        r.record("Automated grading (fail case, via run-tests)", False, f"{type(exc).__name__}: {exc}")
+        r.record(
+            "Automated grading (fail case, via run-tests)", False, f"{type(exc).__name__}: {exc}"
+        )
 
     try:
         resp = session.post(
-            f"{base_url}/missions/challenge/run-tests", json={"code": "print(int(input()) * 2)"}, timeout=45
+            f"{base_url}/missions/challenge/run-tests",
+            json={"code": "print(int(input()) * 2)"},
+            timeout=45,
         )
         body = resp.json() if resp.status_code == 200 else {}
         r.record(
@@ -287,11 +300,17 @@ def check_submission_and_grading(base_url, r, session, mission):
             f"status={resp.status_code} passed_tests={body.get('passed_tests')}",
         )
     except Exception as exc:
-        r.record("Submission workflow (run visible tests, correct code)", False, f"{type(exc).__name__}: {exc}")
+        r.record(
+            "Submission workflow (run visible tests, correct code)",
+            False,
+            f"{type(exc).__name__}: {exc}",
+        )
 
     try:
         resp = session.post(
-            f"{base_url}/missions/challenge/submit", json={"code": "print(int(input()) * 2)"}, timeout=45
+            f"{base_url}/missions/challenge/submit",
+            json={"code": "print(int(input()) * 2)"},
+            timeout=45,
         )
         body = resp.json() if resp.status_code == 200 else {}
         r.record(
@@ -345,22 +364,32 @@ def check_error_handling(base_url, r, session):
     cases = []
 
     try:
-        resp = requests.post(f"{base_url}/auth/team-login", data={"name": "Nonexistent Team", "key": "WRONG"}, timeout=15)
+        resp = requests.post(
+            f"{base_url}/auth/team-login",
+            data={"name": "Nonexistent Team", "key": "WRONG"},
+            timeout=15,
+        )
         cases.append(("invalid team login", resp.status_code == 401))
-    except Exception as exc:
+    except Exception:
         cases.append(("invalid team login", False))
 
     try:
-        resp = requests.post(f"{base_url}/auth/login", data={"email": "nobody@nowhere.test", "password": "wrong"}, timeout=15)
+        resp = requests.post(
+            f"{base_url}/auth/login",
+            data={"email": "nobody@nowhere.test", "password": "wrong"},
+            timeout=15,
+        )
         cases.append(("invalid staff login", resp.status_code == 401))
-    except Exception as exc:
+    except Exception:
         cases.append(("invalid staff login", False))
 
     if session is not None:
         try:
             # No JSON body at all, wrong content-type — request.get_json(silent=True) should
             # degrade to {} rather than raising, per app/blueprints/missions.py.
-            resp = session.post(f"{base_url}/missions/challenge/submit", data="not json", timeout=15)
+            resp = session.post(
+                f"{base_url}/missions/challenge/submit", data="not json", timeout=15
+            )
             cases.append(("malformed submission body", resp.status_code < 500))
         except Exception:
             cases.append(("malformed submission body", False))
@@ -379,7 +408,9 @@ def check_error_handling(base_url, r, session):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--url", required=True, help="Base URL of the deployment to verify.")
     parser.add_argument("--team-name", default="Alpha Squad")
     parser.add_argument("--team-key", default="ALPHA01")
@@ -417,7 +448,11 @@ def main():
             # Submission/grading can't be exercised until the event is running — this mirrors
             # the real Game Master pressing "Start Event" and is required, not incidental.
             resp = gm_session.post(f"{base_url}/mod/event/start", timeout=15, allow_redirects=False)
-            r.record("Event start (via Game Master)", resp.status_code in (200, 302, 303), f"status={resp.status_code}")
+            r.record(
+                "Event start (via Game Master)",
+                resp.status_code in (200, 302, 303),
+                f"status={resp.status_code}",
+            )
         except Exception as exc:
             r.record("Event start (via Game Master)", False, f"{type(exc).__name__}: {exc}")
     check_staff_login(base_url, r, "Security Officer", args.officer_email, args.officer_password)
@@ -432,7 +467,9 @@ def main():
     if gm_session is not None:
         try:
             resp = gm_session.get(f"{base_url}/mod/data", timeout=15)
-            r.record("Game Master dashboard data", resp.status_code == 200, f"status={resp.status_code}")
+            r.record(
+                "Game Master dashboard data", resp.status_code == 200, f"status={resp.status_code}"
+            )
         except Exception as exc:
             r.record("Game Master dashboard data", False, f"{type(exc).__name__}: {exc}")
 

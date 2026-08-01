@@ -154,11 +154,17 @@ class EventService:
         since the whole point is starting next year's Career Fair fresh. Mirrors
         app/blueprints/agent.py's per-mission duplicate_mission, one level up."""
         source = self.get_event(source_event_id)
-        new_event = Event(status="draft", name=name or (f"{source.name} (copy)" if source.name else None))
+        new_event = Event(
+            status="draft", name=name or (f"{source.name} (copy)" if source.name else None)
+        )
         db.session.add(new_event)
         db.session.flush()
 
-        missions = Mission.query.filter(event_scope_filter(Mission, source.id)).order_by(Mission.order_index).all()
+        missions = (
+            Mission.query.filter(event_scope_filter(Mission, source.id))
+            .order_by(Mission.order_index)
+            .all()
+        )
         for mission in missions:
             copy = Mission(
                 booth_id=mission.booth_id,
@@ -182,15 +188,20 @@ class EventService:
             for asset in mission.evidence_files:
                 db.session.add(
                     EvidenceFile(
-                        mission_id=copy.id, label=asset.label, file_type=asset.file_type,
-                        content=asset.content, data=asset.data, mime_type=asset.mime_type,
+                        mission_id=copy.id,
+                        label=asset.label,
+                        file_type=asset.file_type,
+                        content=asset.content,
+                        data=asset.data,
+                        mime_type=asset.mime_type,
                         filename=asset.filename,
                     )
                 )
 
             for question in mission.knowledge_questions:
                 new_question = KnowledgeQuestion(
-                    mission_id=copy.id, question_text=question.question_text,
+                    mission_id=copy.id,
+                    question_text=question.question_text,
                     order_index=question.order_index,
                 )
                 db.session.add(new_question)
@@ -198,7 +209,8 @@ class EventService:
                 for option in question.options:
                     db.session.add(
                         KnowledgeOption(
-                            question_id=new_question.id, option_text=option.option_text,
+                            question_id=new_question.id,
+                            option_text=option.option_text,
                             is_correct=option.is_correct,
                         )
                     )
@@ -206,13 +218,23 @@ class EventService:
             if mission.challenge:
                 src = mission.challenge
                 challenge = Challenge(
-                    mission_id=copy.id, type=src.type, prompt=src.prompt, steps=src.steps,
-                    answer_key=src.answer_key, hint_text=src.hint_text, title=src.title,
-                    language=src.language, function_signature=src.function_signature,
-                    starter_code=src.starter_code, solution_code=src.solution_code,
-                    grading_mode=src.grading_mode, pass_threshold=src.pass_threshold,
-                    max_attempts=src.max_attempts, bonus_points=src.bonus_points,
-                    time_limit_seconds=src.time_limit_seconds, test_code=src.test_code,
+                    mission_id=copy.id,
+                    type=src.type,
+                    prompt=src.prompt,
+                    steps=src.steps,
+                    answer_key=src.answer_key,
+                    hint_text=src.hint_text,
+                    title=src.title,
+                    language=src.language,
+                    function_signature=src.function_signature,
+                    starter_code=src.starter_code,
+                    solution_code=src.solution_code,
+                    grading_mode=src.grading_mode,
+                    pass_threshold=src.pass_threshold,
+                    max_attempts=src.max_attempts,
+                    bonus_points=src.bonus_points,
+                    time_limit_seconds=src.time_limit_seconds,
+                    test_code=src.test_code,
                     difficulty=src.difficulty,
                 )
                 db.session.add(challenge)
@@ -220,16 +242,22 @@ class EventService:
                 for tc in src.test_cases:
                     db.session.add(
                         TestCase(
-                            challenge_id=challenge.id, name=tc.name, input_data=tc.input_data,
-                            expected_output=tc.expected_output, weight=tc.weight,
-                            visibility=tc.visibility, failure_message=tc.failure_message,
+                            challenge_id=challenge.id,
+                            name=tc.name,
+                            input_data=tc.input_data,
+                            expected_output=tc.expected_output,
+                            weight=tc.weight,
+                            visibility=tc.visibility,
+                            failure_message=tc.failure_message,
                             order_index=tc.order_index,
                         )
                     )
                 for hint in src.hints:
                     db.session.add(
                         Hint(
-                            challenge_id=challenge.id, text=hint.text, point_cost=hint.point_cost,
+                            challenge_id=challenge.id,
+                            text=hint.text,
+                            point_cost=hint.point_cost,
                             order_index=hint.order_index,
                         )
                     )

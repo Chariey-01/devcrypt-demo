@@ -1,8 +1,9 @@
 """End-to-end proof that everything an Agent authors is what a Player actually receives:
 problem statement, starter code, language, difficulty, visible/hidden test suites, hints, and
 evidence files — all through the real HTTP routes, not direct DB manipulation."""
+
 from app.extensions import db
-from app.models import Event, Mission, Team, User
+from app.models import Event, Team, User
 
 
 def _login(client, email):
@@ -51,12 +52,22 @@ def test_full_agent_authored_challenge_reaches_the_player_unchanged(client, app)
     # 3. Visible + hidden test suites.
     vis_res = client.post(
         f"/agent/missions/{mission_id}/testcases",
-        json={"name": "visible case", "input_data": "3", "expected_output": "6", "visibility": "visible"},
+        json={
+            "name": "visible case",
+            "input_data": "3",
+            "expected_output": "6",
+            "visibility": "visible",
+        },
     )
     assert vis_res.status_code == 201
     hidden_res = client.post(
         f"/agent/missions/{mission_id}/testcases",
-        json={"name": "hidden case", "input_data": "5", "expected_output": "10", "visibility": "hidden"},
+        json={
+            "name": "hidden case",
+            "input_data": "5",
+            "expected_output": "10",
+            "visibility": "hidden",
+        },
     )
     assert hidden_res.status_code == 201
 
@@ -109,10 +120,15 @@ def test_full_agent_authored_challenge_reaches_the_player_unchanged(client, app)
     assert challenge["grading_mode"] == "auto"
     # Hidden test content must never leak to the player, even in the raw payload.
     assert "hidden case" not in str(status)
-    assert "10" not in challenge.get("starter_code", "") + str(challenge.get("function_signature") or "")
+    assert "10" not in challenge.get("starter_code", "") + str(
+        challenge.get("function_signature") or ""
+    )
 
     # Evidence file surfaces on the player side.
-    assert any(e["label"] == "server.log" and e["content"] == "connection refused" for e in mission["evidence_files"])
+    assert any(
+        e["label"] == "server.log" and e["content"] == "connection refused"
+        for e in mission["evidence_files"]
+    )
 
     # Binary evidence: never leaks raw bytes into the JSON payload, and is downloadable.
     binary_entry = next(e for e in mission["evidence_files"] if e["label"] == "crash.png")
@@ -134,7 +150,8 @@ def test_full_agent_authored_challenge_reaches_the_player_unchanged(client, app)
 
     # 8. Player submits — hidden test suite is the one that actually decides the outcome.
     submit_res = player_client.post(
-        "/missions/challenge/submit", json={"code": "print(int(input()) * 3)"}  # wrong on the hidden case
+        "/missions/challenge/submit",
+        json={"code": "print(int(input()) * 3)"},  # wrong on the hidden case
     )
     submit_body = submit_res.get_json()
     assert submit_body["correct"] is False

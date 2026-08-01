@@ -86,6 +86,7 @@ Usage:
     python3 scripts/import_challenge_content.py --yes               # apply
     python3 scripts/import_challenge_content.py --dir some/other/path --yes
 """
+
 import argparse
 import csv
 import glob
@@ -100,7 +101,9 @@ from app import create_app
 from app.extensions import db
 from app.models import Challenge, Mission, TestCase
 
-DEFAULT_CONTENT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "content", "challenges")
+DEFAULT_CONTENT_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "content", "challenges"
+)
 
 BOOTH_FILENAME_RE = re.compile(r"^booth(\d+)", re.IGNORECASE)
 
@@ -114,9 +117,27 @@ VALID_DIFFICULTIES = ("easy", "medium", "hard")
 # Modules a test file might legitimately import besides the player's own code -- never
 # candidates for the "from X import ..." rewrite below, regardless of how many appear.
 STDLIB_TEST_IMPORT_ALLOWLIST = {
-    "pytest", "unittest", "collections", "itertools", "functools", "typing", "math", "re",
-    "os", "sys", "json", "datetime", "random", "string", "copy", "io", "statistics",
-    "dataclasses", "decimal", "enum", "abc",
+    "pytest",
+    "unittest",
+    "collections",
+    "itertools",
+    "functools",
+    "typing",
+    "math",
+    "re",
+    "os",
+    "sys",
+    "json",
+    "datetime",
+    "random",
+    "string",
+    "copy",
+    "io",
+    "statistics",
+    "dataclasses",
+    "decimal",
+    "enum",
+    "abc",
 }
 FROM_IMPORT_RE = re.compile(r"^from\s+(\w+)\s+import\b", re.MULTILINE)
 
@@ -132,7 +153,8 @@ def normalize_test_module_import(test_code, booth_label):
     player's code to. Returns (possibly-rewritten test_code, rewrite_note_or_None). Raises
     BoothFileSetError if more than one distinct non-stdlib module is imported (ambiguous)."""
     candidates = {
-        m for m in FROM_IMPORT_RE.findall(test_code)
+        m
+        for m in FROM_IMPORT_RE.findall(test_code)
         if m not in STDLIB_TEST_IMPORT_ALLOWLIST and m != "submission"
     }
     if not candidates:
@@ -144,7 +166,12 @@ def normalize_test_module_import(test_code, booth_label):
             f"file so it imports the function under test from a single module."
         )
     old_module = candidates.pop()
-    rewritten = re.sub(rf"^from\s+{re.escape(old_module)}\s+import\b", "from submission import", test_code, flags=re.MULTILINE)
+    rewritten = re.sub(
+        rf"^from\s+{re.escape(old_module)}\s+import\b",
+        "from submission import",
+        test_code,
+        flags=re.MULTILINE,
+    )
     return rewritten, f"{booth_label}: rewrote test imports from '{old_module}' to 'submission'"
 
 
@@ -204,7 +231,7 @@ def parse_meta_json(path):
         try:
             raw = json.load(f)
         except json.JSONDecodeError as e:
-            raise BoothFileSetError(f"{os.path.basename(path)}: invalid JSON ({e}).")
+            raise BoothFileSetError(f"{os.path.basename(path)}: invalid JSON ({e}).") from e
     if not isinstance(raw, dict):
         raise BoothFileSetError(f"{os.path.basename(path)}: expected a JSON object.")
 
@@ -220,13 +247,17 @@ def parse_meta_json(path):
         if field in raw:
             try:
                 meta[field] = int(raw[field])
-            except (TypeError, ValueError):
-                raise BoothFileSetError(f"{os.path.basename(path)}: {field} must be an integer.")
+            except (TypeError, ValueError) as e:
+                raise BoothFileSetError(
+                    f"{os.path.basename(path)}: {field} must be an integer."
+                ) from e
     if "mission_time_limit_seconds" in raw:
         try:
             meta["mission_time_limit_seconds"] = int(raw["mission_time_limit_seconds"])
-        except (TypeError, ValueError):
-            raise BoothFileSetError(f"{os.path.basename(path)}: mission_time_limit_seconds must be an integer.")
+        except (TypeError, ValueError) as e:
+            raise BoothFileSetError(
+                f"{os.path.basename(path)}: mission_time_limit_seconds must be an integer."
+            ) from e
     if "difficulty" in raw:
         difficulty = raw["difficulty"]
         if difficulty is not None and difficulty not in VALID_DIFFICULTIES:
@@ -270,10 +301,10 @@ def parse_test_cases_csv(path):
             weight_raw = (raw.get("weight") or "").strip()
             try:
                 weight = int(weight_raw) if weight_raw else 1
-            except ValueError:
+            except ValueError as e:
                 raise BoothFileSetError(
                     f"{os.path.basename(path)} line {i}: weight {weight_raw!r} is not an integer."
-                )
+                ) from e
             visibility_raw = (raw.get("visibility") or "").strip().lower()
             if visibility_raw not in ("", "visible", "hidden"):
                 raise BoothFileSetError(
@@ -398,7 +429,9 @@ def apply_plan(plan):
             # has no Challenge row yet gets a fresh auto-graded one instead of erroring out.
             # prompt is NOT NULL, so it must be set at construction time, not after -- otherwise
             # the flush() below fails before challenge.prompt = ... ever runs.
-            challenge = Challenge(mission_id=mission.id, type="code", grading_mode="auto", prompt=item["prompt"])
+            challenge = Challenge(
+                mission_id=mission.id, type="code", grading_mode="auto", prompt=item["prompt"]
+            )
             db.session.add(challenge)
             db.session.flush()
 
@@ -443,12 +476,18 @@ def apply_plan(plan):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
-        "--dir", dest="content_dir", default=DEFAULT_CONTENT_DIR,
+        "--dir",
+        dest="content_dir",
+        default=DEFAULT_CONTENT_DIR,
         help=f"Folder containing boothN_*.md/.csv pairs (default: {DEFAULT_CONTENT_DIR})",
     )
-    parser.add_argument("--yes", action="store_true", help="Apply without an interactive confirm prompt.")
+    parser.add_argument(
+        "--yes", action="store_true", help="Apply without an interactive confirm prompt."
+    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.content_dir):

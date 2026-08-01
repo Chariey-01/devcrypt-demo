@@ -3,6 +3,7 @@ two events from each other -- not just that the existing single-event test suite
 unmodified (that's covered by every other test file continuing to pass as-is). Event CRUD
 (Phase 1c) doesn't exist yet, so these tests create a second Event row directly via the ORM to
 simulate what a GM will eventually do through the dashboard."""
+
 from app.extensions import db
 from app.models import CodeSubmission, Event, Mission, Team, TeamMission, User
 from app.repositories.team_repo import TeamRepository
@@ -18,8 +19,14 @@ def _make_event_with_team_and_mission(name_suffix, status="running"):
     team = Team(name=f"Alpha{name_suffix}", score=10, integrity=100, event_id=event.id)
     team.set_key("KEY123")
     mission = Mission(
-        title=f"Node{name_suffix}", type="code", narrative="n", cipher_word="X",
-        booth_id=1, order_index=1, status="published", event_id=event.id,
+        title=f"Node{name_suffix}",
+        type="code",
+        narrative="n",
+        cipher_word="X",
+        booth_id=1,
+        order_index=1,
+        status="published",
+        event_id=event.id,
     )
     db.session.add_all([team, mission])
     db.session.commit()
@@ -124,7 +131,7 @@ def test_same_name_within_one_event_is_still_rejected(app):
         db.session.add(team_b)
         try:
             db.session.commit()
-            assert False, "expected an IntegrityError from the composite unique constraint"
+            raise AssertionError("expected an IntegrityError from the composite unique constraint")
         except IntegrityError:
             db.session.rollback()
 
@@ -137,7 +144,14 @@ def test_team_and_mission_created_without_event_id_are_auto_stamped_to_the_activ
 
         team = Team(name="Unscoped Team", score=0, integrity=100)  # no event_id passed
         team.set_key("KEY-C")
-        mission = Mission(title="Unscoped Node", type="code", narrative="n", cipher_word="X", booth_id=1, order_index=1)
+        mission = Mission(
+            title="Unscoped Node",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+        )
         db.session.add_all([team, mission])
         db.session.commit()
 
@@ -167,8 +181,16 @@ def test_analytics_scoped_to_one_event_does_not_count_another_events_submissions
         analytics = AnalyticsService()
         assert analytics.total_submissions(event_id=event1.id) == 2
         assert analytics.total_submissions(event_id=event2.id) == 1
-        assert analytics.pass_fail_counts(event_id=event1.id) == {"total": 2, "passed": 2, "failed": 0}
-        assert analytics.pass_fail_counts(event_id=event2.id) == {"total": 1, "passed": 0, "failed": 1}
+        assert analytics.pass_fail_counts(event_id=event1.id) == {
+            "total": 2,
+            "passed": 2,
+            "failed": 0,
+        }
+        assert analytics.pass_fail_counts(event_id=event2.id) == {
+            "total": 1,
+            "passed": 0,
+            "failed": 1,
+        }
 
 
 def test_reset_all_teams_scoped_to_one_event_leaves_the_other_untouched(app):

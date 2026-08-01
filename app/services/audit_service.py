@@ -11,8 +11,17 @@ logger = logging.getLogger("devcrypt.audit")
 
 class AuditService:
     def log(
-        self, actor, actor_role, action, target_type=None, target_id=None, metadata=None,
-        team_id=None, result=None, score_delta=None, event_id=None,
+        self,
+        actor,
+        actor_role,
+        action,
+        target_type=None,
+        target_id=None,
+        metadata=None,
+        team_id=None,
+        result=None,
+        score_delta=None,
+        event_id=None,
     ):
         entry = EventLog(
             actor_id=getattr(actor, "id", None),

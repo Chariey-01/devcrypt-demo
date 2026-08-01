@@ -39,10 +39,10 @@ class ScoringService:
     # ON_TIME_BONUS entirely — same "reward speed" intent, finer-grained.
     # ---------------------------------------------------------------------
     TIME_BONUS_TIERS = (
-        (300, 20),   # <= 5 min
-        (480, 10),   # <= 8 min
-        (600, 5),    # <= 10 min
-    )                # > 10 min -> 0, handled by falling through
+        (300, 20),  # <= 5 min
+        (480, 10),  # <= 8 min
+        (600, 5),  # <= 10 min
+    )  # > 10 min -> 0, handled by falling through
 
     # ---------------------------------------------------------------------
     # Hints — sequential, per booth, capped at MAX_HINTS_PER_BOOTH. All slots cost the same
@@ -140,7 +140,9 @@ class ScoringService:
         # attempts — so a team that improved from 60% to finally passing collects 100 total,
         # never 100 plus the partial credit it was already paid along the way.
         already_paid = round(self.CHALLENGE_COMPLETE * team_mission.best_percent_score / 100)
-        team_mission.best_percent_score = max(team_mission.best_percent_score, grading_result.percent_score)
+        team_mission.best_percent_score = max(
+            team_mission.best_percent_score, grading_result.percent_score
+        )
         base = max(0, self.CODING_CHALLENGE_PASS - already_paid)
 
         first_attempt = team_mission.attempts == 0

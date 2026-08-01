@@ -9,8 +9,8 @@ from ..extensions import db
 from ..models import (
     CodeSubmission,
     EvidenceFile,
-    Fragment,
     FinalFlagConfirmation,
+    Fragment,
     Mission,
     TeamKnowledgeAnswer,
     TeamMission,
@@ -33,6 +33,7 @@ mission_service = MissionService(scoring=scoring_service, cipher=cipher_service)
 event_service = EventService()
 grading_engine = GradingEngine()
 audit_service = AuditService()
+
 
 def _team_event_id(team):
     # Falls back to the active event for a team row that predates event_id being stamped
@@ -77,7 +78,9 @@ def _revealed_hints(challenge, team_mission):
 def _serialize_knowledge_question(question, team_mission):
     answered = None
     if team_mission:
-        answered = next((a for a in team_mission.knowledge_answers if a.question_id == question.id), None)
+        answered = next(
+            (a for a in team_mission.knowledge_answers if a.question_id == question.id), None
+        )
     return {
         "id": question.id,
         "question_text": question.question_text,
@@ -144,10 +147,14 @@ def _serialize_challenge(challenge, team_mission):
 def status():
     team = current_team()
     state = event_service.get_active_event()
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, team_mission = mission_service.current_mission_for(team, missions)
 
     # Compact per-booth progress sequence for the player's mission timeline UI — built from
@@ -166,11 +173,16 @@ def status():
         elif m.id == current_mission_id:
             tl_status = "current"
             if i + 1 < len(ordered_missions):
-                next_mission_payload = {"mission_id": ordered_missions[i + 1].id, "title": ordered_missions[i + 1].title}
+                next_mission_payload = {
+                    "mission_id": ordered_missions[i + 1].id,
+                    "title": ordered_missions[i + 1].title,
+                }
         else:
             tl_status = "not_started"
         timeline.append({"mission_id": m.id, "title": m.title, "status": tl_status})
-    booths_completed = sum(1 for t in timeline if t["status"] in ("passed", "overridden", "soft_locked"))
+    booths_completed = sum(
+        1 for t in timeline if t["status"] in ("passed", "overridden", "soft_locked")
+    )
 
     payload = {
         "timeline": timeline,
@@ -212,7 +224,9 @@ def status():
 
         remaining_penalty = None
         if team_mission.penalty_until and team_mission.penalty_until > datetime.utcnow():
-            remaining_penalty = int((team_mission.penalty_until - datetime.utcnow()).total_seconds())
+            remaining_penalty = int(
+                (team_mission.penalty_until - datetime.utcnow()).total_seconds()
+            )
 
         payload["mission"] = {
             "id": mission.id,
@@ -228,7 +242,9 @@ def status():
             # Frozen the instant a deciding submission arrived — once present, the frontend
             # must show these instead of computing a live countdown from started_at, and must
             # never let grading/review time move them.
-            "submitted_at": team_mission.submitted_at.isoformat() if team_mission.submitted_at else None,
+            "submitted_at": team_mission.submitted_at.isoformat()
+            if team_mission.submitted_at
+            else None,
             "elapsed_seconds": team_mission.elapsed_seconds,
             "time_remaining_frozen": team_mission.time_remaining,
             "submission_status": team_mission.submission_status,
@@ -285,10 +301,14 @@ def answer_knowledge_question(question_id):
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -306,7 +326,9 @@ def answer_knowledge_question(question_id):
         return jsonify(
             {
                 "correct": existing.is_correct,
-                "message": NARRATIVE["knowledge_correct"] if existing.is_correct else NARRATIVE["knowledge_wrong"],
+                "message": NARRATIVE["knowledge_correct"]
+                if existing.is_correct
+                else NARRATIVE["knowledge_wrong"],
                 "already_answered": True,
             }
         )
@@ -314,7 +336,7 @@ def answer_knowledge_question(question_id):
     data = request.get_json(silent=True) or {}
     raw_option_id = data.get("option_id", request.form.get("option_id"))
     try:
-        option_id = int(raw_option_id)
+        option_id = int(raw_option_id)  # type: ignore[arg-type]  # None/bad value caught below
     except (TypeError, ValueError):
         return jsonify({"error": "option_id is required."}), 400
     option = next((o for o in question.options if o.id == option_id), None)
@@ -349,7 +371,9 @@ def answer_knowledge_question(question_id):
     return jsonify(
         {
             "correct": option.is_correct,
-            "message": NARRATIVE["knowledge_correct"] if option.is_correct else NARRATIVE["knowledge_wrong"],
+            "message": NARRATIVE["knowledge_correct"]
+            if option.is_correct
+            else NARRATIVE["knowledge_wrong"],
         }
     )
 
@@ -362,10 +386,14 @@ def submit_challenge():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -435,7 +463,12 @@ def submit_challenge():
 
         if grading_result.passed_threshold:
             mission_service.complete_mission(
-                team, team_mission, mission, "passed", grading_result=grading_result, submitted_at=received_at
+                team,
+                team_mission,
+                mission,
+                "passed",
+                grading_result=grading_result,
+                submitted_at=received_at,
             )
             return jsonify(
                 {
@@ -481,7 +514,9 @@ def submit_challenge():
         notify_mod("submission_failed", _team_event_id(team))
         return jsonify({"correct": False, "message": NARRATIVE["challenge_fail"]})
 
-    mission_service.complete_mission(team, team_mission, mission, "passed", submitted_at=received_at)
+    mission_service.complete_mission(
+        team, team_mission, mission, "passed", submitted_at=received_at
+    )
     message = NARRATIVE["flag_final"] if challenge.type == "flag" else NARRATIVE["challenge_pass"]
     return jsonify({"correct": True, "message": message})
 
@@ -494,10 +529,14 @@ def request_hint():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -511,26 +550,37 @@ def request_hint():
         # hand back whatever's already been revealed rather than erroring, so a stale/duplicate
         # client request is a no-op, not a confusing failure.
         return jsonify(
-            {"hint": _revealed_hints(mission.challenge, team_mission)[-1] if team_mission.hints_taken else None,
-             "hints_revealed": _revealed_hints(mission.challenge, team_mission),
-             "hints_taken": team_mission.hints_taken,
-             "hints_available": 0}
+            {
+                "hint": _revealed_hints(mission.challenge, team_mission)[-1]
+                if team_mission.hints_taken
+                else None,
+                "hints_revealed": _revealed_hints(mission.challenge, team_mission),
+                "hints_taken": team_mission.hints_taken,
+                "hints_available": 0,
+            }
         )
 
     db.session.refresh(team, with_for_update=True)
     scoring_service.apply_hint_penalty(team, team_mission)
     audit_service.log(
-        None, "team", "hint_requested", "team_mission", team_mission.id,
-        team_id=team.id, score_delta=-ScoringService.HINT_PENALTY,
+        None,
+        "team",
+        "hint_requested",
+        "team_mission",
+        team_mission.id,
+        team_id=team.id,
+        score_delta=-ScoringService.HINT_PENALTY,
         metadata=f"{team.name}: hint {team_mission.hints_taken} of {mission.title}",
     )
     db.session.commit()
     revealed = _revealed_hints(mission.challenge, team_mission)
     return jsonify(
-        {"hint": revealed[-1] if revealed else None,
-         "hints_revealed": revealed,
-         "hints_taken": team_mission.hints_taken,
-         "hints_available": max(0, max_hints_here - team_mission.hints_taken)}
+        {
+            "hint": revealed[-1] if revealed else None,
+            "hints_revealed": revealed,
+            "hints_taken": team_mission.hints_taken,
+            "hints_available": max(0, max_hints_here - team_mission.hints_taken),
+        }
     )
 
 
@@ -542,10 +592,14 @@ def soft_lock():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -561,7 +615,9 @@ def soft_lock():
             }
         ), 403
 
-    ok = mission_service.soft_lock_mission(team, team_mission, mission, state.soft_lock_min_attempts)
+    ok = mission_service.soft_lock_mission(
+        team, team_mission, mission, state.soft_lock_min_attempts
+    )
     if not ok:
         return jsonify({"error": "This mission is already resolved."}), 409
     return jsonify({"ok": True, "message": "Booth soft-locked. Moving on to the next assignment."})
@@ -575,10 +631,14 @@ def run_visible_tests():
     if state.status != "running":
         return jsonify({"error": "Event is not currently running."}), 409
 
-    missions = Mission.query.filter(
-        Mission.status == "published",
-        event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
-    ).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(
+            Mission.status == "published",
+            event_scope_filter(Mission, team.event_id or event_service.get_active_event().id),
+        )
+        .order_by(Mission.order_index)
+        .all()
+    )
     mission, _ = mission_service.current_mission_for(team, missions)
     if mission is None:
         return jsonify({"error": "No active mission."}), 400
@@ -650,7 +710,11 @@ def final_flag_requirements():
     if passed_ids != set(required_mission_ids):
         return jsonify({"error": "Not all required vaults have been secured yet."}), 403
 
-    missions = Mission.query.filter(Mission.id.in_(required_mission_ids)).order_by(Mission.order_index).all()
+    missions = (
+        Mission.query.filter(Mission.id.in_(required_mission_ids))
+        .order_by(Mission.order_index)
+        .all()
+    )
     return jsonify({"vaults": [{"mission_id": m.id, "title": m.title} for m in missions]})
 
 
@@ -694,7 +758,9 @@ def final_flag():
             wrong.append(mission_id)
 
     if wrong:
-        return jsonify({"error": "One or more fragments don't match.", "incorrect_mission_ids": wrong}), 400
+        return jsonify(
+            {"error": "One or more fragments don't match.", "incorrect_mission_ids": wrong}
+        ), 400
 
     # Fragments are correct, but the flag itself is never reconstructed/returned here — a Game
     # Master must confirm at the Command Centre first (see /mod/final-flag/<team_id>/confirm in
@@ -704,7 +770,13 @@ def final_flag():
         confirmation = FinalFlagConfirmation(team_id=team.id)
         db.session.add(confirmation)
         audit_service.log(
-            None, "team", "final_flag_requested", "team", team.id, team_id=team.id, metadata=team.name
+            None,
+            "team",
+            "final_flag_requested",
+            "team",
+            team.id,
+            team_id=team.id,
+            metadata=team.name,
         )
         db.session.commit()
         notify_mod("final_flag_requested", _team_event_id(team))
@@ -760,10 +832,18 @@ def _reconstruct_final_flag(team, required_mission_ids):
                 team.name,
                 required_mission_ids,
             )
-            raise FinalFlagReconstructionError("Final flag could not be verified — notify a Game Master.", 500)
+            raise FinalFlagReconstructionError(
+                "Final flag could not be verified — notify a Game Master.", 500
+            )
         raise FinalFlagReconstructionError("Final flag is not configured for this event yet.", 404)
     audit_service.log(
-        None, "team", "final_flag_reconstructed", "team", team.id, team_id=team.id, metadata=team.name
+        None,
+        "team",
+        "final_flag_reconstructed",
+        "team",
+        team.id,
+        team_id=team.id,
+        metadata=team.name,
     )
     db.session.commit()
     return flag

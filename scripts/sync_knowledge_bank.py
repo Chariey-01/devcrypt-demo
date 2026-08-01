@@ -23,6 +23,7 @@ Usage:
     python3 scripts/sync_knowledge_bank.py             # prints a summary, asks to confirm
     python3 scripts/sync_knowledge_bank.py --yes        # skip the confirmation prompt
 """
+
 import argparse
 import os
 import sys
@@ -79,7 +80,9 @@ def sync_knowledge_bank(quiet=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--yes", action="store_true", help="Apply without an interactive confirm prompt.")
+    parser.add_argument(
+        "--yes", action="store_true", help="Apply without an interactive confirm prompt."
+    )
     args = parser.parse_args()
 
     app = create_app()
@@ -98,7 +101,9 @@ def main():
 
         print(f"{len(preview)} booth(s) will have their Knowledge Check replaced:\n")
         for mission, existing_count, new_count in preview:
-            print(f"  booth_id={mission.booth_id} ({mission.title}): {existing_count} existing question(s) -> {new_count} from knowledge_bank.py")
+            print(
+                f"  booth_id={mission.booth_id} ({mission.title}): {existing_count} existing question(s) -> {new_count} from knowledge_bank.py"
+            )
         print()
 
         if not args.yes:

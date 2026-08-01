@@ -2,7 +2,15 @@ from app.services.grading_service import GradingEngine
 
 
 class DummyTestCase:
-    def __init__(self, name, input_data, expected_output, weight=1, visibility="visible", failure_message=None):
+    def __init__(
+        self,
+        name,
+        input_data,
+        expected_output,
+        weight=1,
+        visibility="visible",
+        failure_message=None,
+    ):
         self.name = name
         self.input_data = input_data
         self.expected_output = expected_output
@@ -83,7 +91,9 @@ def test_hidden_test_results_omit_input_and_expected_output():
 
 def test_failing_test_uses_configured_failure_message():
     engine = GradingEngine()
-    challenge = DummyChallenge([DummyTestCase("wrong", "5", "999", failure_message="Check your doubling logic.")])
+    challenge = DummyChallenge(
+        [DummyTestCase("wrong", "5", "999", failure_message="Check your doubling logic.")]
+    )
     result = engine.run_all_tests(challenge, DOUBLE_CODE)
 
     assert result.results[0].passed is False

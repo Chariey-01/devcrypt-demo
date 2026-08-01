@@ -8,7 +8,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_talisman import Talisman
 from flask_wtf import CSRFProtect
 
-
 db = SQLAlchemy()
 # render_as_batch: SQLite can't ALTER TABLE in place, so Alembic needs batch mode to add
 # columns there (harmless no-op on Postgres, which supports ALTER TABLE natively).

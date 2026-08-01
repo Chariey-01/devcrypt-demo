@@ -53,7 +53,7 @@ class FinalFlagService:
         """Setup-time only (scripts/derive_final_flag.py) — never called at request time."""
         key = self.master_key(mission_ids)
         keystream = self._keystream(key, len(plaintext.encode("utf-8")))
-        ciphertext = bytes(c ^ k for c, k in zip(plaintext.encode("utf-8"), keystream))
+        ciphertext = bytes(c ^ k for c, k in zip(plaintext.encode("utf-8"), keystream, strict=True))
         return base64.b64encode(ciphertext).decode("ascii")
 
     def reconstruct(self, mission_ids):
@@ -75,7 +75,7 @@ class FinalFlagService:
             return None
         key = self.master_key(mission_ids)
         keystream = self._keystream(key, len(self.ciphertext))
-        plaintext = bytes(c ^ k for c, k in zip(self.ciphertext, keystream))
+        plaintext = bytes(c ^ k for c, k in zip(self.ciphertext, keystream, strict=True))
         try:
             return plaintext.decode("utf-8")
         except UnicodeDecodeError:

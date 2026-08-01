@@ -38,7 +38,9 @@ def test_upsert_challenge_preserves_an_existing_pytest_grading_mode(client, app,
     with app.app_context():
         challenge = Challenge.query.filter_by(mission_id=mission_id).first()
         challenge.grading_mode = "pytest"
-        challenge.test_code = "from submission import solve\n\n\ndef test_solve():\n    assert solve()\n"
+        challenge.test_code = (
+            "from submission import solve\n\n\ndef test_solve():\n    assert solve()\n"
+        )
         db.session.commit()
 
     res = client.put(
@@ -66,7 +68,9 @@ def test_agent_cannot_read_or_edit_another_agents_mission(client, app, two_agent
     login(client, "agent-b@test.local")
 
     assert client.get(f"/agent/missions/{mission_id}").status_code == 404
-    assert client.put(f"/agent/missions/{mission_id}", json={"title": "hijacked"}).status_code == 404
+    assert (
+        client.put(f"/agent/missions/{mission_id}", json={"title": "hijacked"}).status_code == 404
+    )
     assert client.delete(f"/agent/missions/{mission_id}").status_code == 404
     assert client.get("/agent/missions").get_json()["missions"] == []
 
@@ -149,7 +153,10 @@ def test_duplicate_copies_challenge_content_as_a_new_draft(client, app, two_agen
         f"/agent/missions/{mission_id}/testcases",
         json={"name": "case 1", "expected_output": "6", "input_data": "3", "visibility": "visible"},
     )
-    client.post(f"/agent/missions/{mission_id}/hints", json={"text": "Think about multiplication.", "point_cost": 5})
+    client.post(
+        f"/agent/missions/{mission_id}/hints",
+        json={"text": "Think about multiplication.", "point_cost": 5},
+    )
     client.post(f"/agent/missions/{mission_id}/publish")
 
     res = client.post(f"/agent/missions/{mission_id}/duplicate")
@@ -280,7 +287,7 @@ def test_deleting_a_mission_with_a_code_submission_does_not_crash(client, app, t
     # team-reset path specifically with a manual bulk-delete; this proves the general DELETE
     # /agent/missions/<id> path (unprotected by that workaround) is now fixed at the model level.
     from app.extensions import db
-    from app.models import Challenge, CodeSubmission, Mission, Team, TeamMission
+    from app.models import CodeSubmission, Mission, Team, TeamMission
 
     login(client, "agent-a@test.local")
     mission_id = _create_mission(client)

@@ -41,7 +41,13 @@ def test_event_lifecycle_transitions_drive_actual_state(client, app):
 
 
 def test_event_lifecycle_routes_require_game_master(client, app):
-    for path in ("/mod/event/publish", "/mod/event/start", "/mod/event/pause", "/mod/event/end", "/mod/event/archive"):
+    for path in (
+        "/mod/event/publish",
+        "/mod/event/start",
+        "/mod/event/pause",
+        "/mod/event/end",
+        "/mod/event/archive",
+    ):
         assert client.post(path).status_code in (302, 401, 403)
     with app.app_context():
         # Never actually transitioned without auth.
@@ -62,12 +68,19 @@ def test_pausing_the_event_blocks_hint_requests_and_resuming_restores_them(clien
         team.set_key("PAUSE01")
         db.session.add(team)
         mission = Mission(
-            title="Pause Test Booth", type="code", narrative="x", cipher_word="X",
-            booth_id=1, order_index=1, status="published",
+            title="Pause Test Booth",
+            type="code",
+            narrative="x",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+            status="published",
         )
         db.session.add(mission)
         db.session.commit()
-        db.session.add(Challenge(mission_id=mission.id, type="code", prompt="p", grading_mode="auto"))
+        db.session.add(
+            Challenge(mission_id=mission.id, type="code", prompt="p", grading_mode="auto")
+        )
         db.session.commit()
 
     player = app.test_client()
@@ -111,7 +124,9 @@ def test_game_master_can_add_and_remove_team_members(client, app):
         db.session.commit()
         team_id = team.id
 
-    res = client.post(f"/mod/team/{team_id}/member", json={"name": "Ada Lovelace", "email": "ada@test.local"})
+    res = client.post(
+        f"/mod/team/{team_id}/member", json={"name": "Ada Lovelace", "email": "ada@test.local"}
+    )
     assert res.status_code == 201
     member_id = res.get_json()["id"]
     with app.app_context():
@@ -128,7 +143,14 @@ def test_game_master_can_set_a_teams_starting_booth(client, app):
     with app.app_context():
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
-        mission = Mission(title="Booth Two", type="code", narrative="n", cipher_word="X", booth_id=2, order_index=2)
+        mission = Mission(
+            title="Booth Two",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=2,
+            order_index=2,
+        )
         db.session.add_all([team, mission])
         db.session.commit()
         team_id, mission_id = team.id, mission.id
@@ -150,7 +172,14 @@ def test_game_master_override_marks_mission_overridden_and_awards_fragment(clien
     with app.app_context():
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
-        mission = Mission(title="Stuck Booth", type="code", narrative="n", cipher_word="X", booth_id=1, order_index=1)
+        mission = Mission(
+            title="Stuck Booth",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+        )
         db.session.add_all([team, mission])
         db.session.commit()
         tm = TeamMission(team_id=team.id, mission_id=mission.id, status="in_progress")
@@ -172,7 +201,14 @@ def test_game_master_override_rejected_once_already_resolved(client, app):
     with app.app_context():
         team = Team(name="Alpha", score=0, integrity=100)
         team.set_key("ALPHA01")
-        mission = Mission(title="Stuck Booth", type="code", narrative="n", cipher_word="X", booth_id=1, order_index=1)
+        mission = Mission(
+            title="Stuck Booth",
+            type="code",
+            narrative="n",
+            cipher_word="X",
+            booth_id=1,
+            order_index=1,
+        )
         db.session.add_all([team, mission])
         db.session.commit()
         tm = TeamMission(team_id=team.id, mission_id=mission.id, status="passed")

@@ -20,7 +20,6 @@ from flask_login import current_user, login_required
 from ..decorators import roles_required
 from ..extensions import db, limiter
 from ..models import (
-    Challenge,
     CodeSubmission,
     Event,
     EventLog,
@@ -47,7 +46,9 @@ mod_bp = Blueprint("mod", __name__, url_prefix="/mod")
 scoring_service = ScoringService()
 cipher_service = CipherService()
 audit_service = AuditService()
-mission_service = MissionService(scoring=scoring_service, cipher=cipher_service, audit=audit_service)
+mission_service = MissionService(
+    scoring=scoring_service, cipher=cipher_service, audit=audit_service
+)
 analytics_service = AnalyticsService(mission_service=mission_service)
 event_service = EventService()
 team_repo = TeamRepository()
@@ -91,7 +92,9 @@ def data():
     # dashboard's "current mission" column never shows a draft mission a team can't actually
     # reach (mod.py:99's list_missions is intentionally unfiltered — GMs manage drafts too).
     missions = (
-        Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, active_event.id))
+        Mission.query.filter(
+            Mission.status == "published", event_scope_filter(Mission, active_event.id)
+        )
         .order_by(Mission.order_index)
         .all()
     )
@@ -102,7 +105,9 @@ def data():
             1 for tm in team.team_missions if tm.status in ("passed", "overridden", "soft_locked")
         )
         overridden = any(tm.status == "overridden" for tm in team.team_missions)
-        soft_locked_missions = [tm.mission.title for tm in team.team_missions if tm.status == "soft_locked"]
+        soft_locked_missions = [
+            tm.mission.title for tm in team.team_missions if tm.status == "soft_locked"
+        ]
         current, _ = mission_service.current_mission_for(team, missions)
         finished = total_missions and missions_done >= total_missions
         rows.append(
@@ -148,9 +153,11 @@ def team_detail(team_id):
         if tm_ids
         else (EventLog.target_type == "team") & (EventLog.target_id == team.id)
     )
-    logs = EventLog.query.filter(
-        db.or_(EventLog.team_id == team.id, legacy_match)
-    ).order_by(EventLog.logged_at.desc()).all()
+    logs = (
+        EventLog.query.filter(db.or_(EventLog.team_id == team.id, legacy_match))
+        .order_by(EventLog.logged_at.desc())
+        .all()
+    )
     return render_template("mod/team_detail.html", team=team, logs=logs, table_id="log-grid")
 
 
@@ -198,7 +205,12 @@ def list_missions():
     return jsonify(
         {
             "missions": [
-                {"id": m.id, "title": m.title, "booth_id": m.booth_id, "owner_agent_id": m.owner_agent_id}
+                {
+                    "id": m.id,
+                    "title": m.title,
+                    "booth_id": m.booth_id,
+                    "owner_agent_id": m.owner_agent_id,
+                }
                 for m in missions
             ]
         }
@@ -240,8 +252,13 @@ def rename_team(team_id):
     old_name = team.name
     team.name = new_name
     audit_service.log(
-        current_user, "game_master", "team_renamed", "team", team.id,
-        team_id=team.id, metadata=f"{old_name} -> {new_name}",
+        current_user,
+        "game_master",
+        "team_renamed",
+        "team",
+        team.id,
+        team_id=team.id,
+        metadata=f"{old_name} -> {new_name}",
     )
     db.session.commit()
     notify_mod("team_renamed", team.event_id or event_service.get_active_event().id)
@@ -254,7 +271,9 @@ def rename_team(team_id):
 def delete_team(team_id):
     team = Team.query.get_or_404(team_id)
     event_id = team.event_id or event_service.get_active_event().id
-    audit_service.log(current_user, "game_master", "team_deleted", "team", team.id, metadata=team.name)
+    audit_service.log(
+        current_user, "game_master", "team_deleted", "team", team.id, metadata=team.name
+    )
     admin_reset_service.delete_team(team)
     notify_mod("team_deleted", event_id)
     notify_global("leaderboard_refresh", event_id)
@@ -267,8 +286,13 @@ def delete_team(team_id):
 def reset_team(team_id):
     team = Team.query.get_or_404(team_id)
     audit_service.log(
-        current_user, "game_master", "team_progress_reset", "team", team.id,
-        team_id=team.id, metadata=team.name,
+        current_user,
+        "game_master",
+        "team_progress_reset",
+        "team",
+        team.id,
+        team_id=team.id,
+        metadata=team.name,
     )
     admin_reset_service.reset_team(team)
     event_id = team.event_id or event_service.get_active_event().id
@@ -290,7 +314,9 @@ def reset_all_teams():
     active_event = _selected_event()
     team_count = Team.query.filter(event_scope_filter(Team, active_event.id)).count()
     admin_reset_service.reset_all_teams(event_id=active_event.id)
-    audit_service.log(current_user, "game_master", "all_teams_reset", metadata=f"{team_count} teams")
+    audit_service.log(
+        current_user, "game_master", "all_teams_reset", metadata=f"{team_count} teams"
+    )
     db.session.commit()
     notify_mod("teams_reset_all", active_event.id)
     notify_global("leaderboard_refresh", active_event.id)
@@ -334,7 +360,9 @@ def set_starting_booth(team_id):
     if mission_id:
         Mission.query.get_or_404(mission_id)
     team.starting_mission_id = mission_id or None
-    audit_service.log(current_user, "game_master", "starting_booth_set", "team", team.id, team_id=team.id)
+    audit_service.log(
+        current_user, "game_master", "starting_booth_set", "team", team.id, team_id=team.id
+    )
     db.session.commit()
     return jsonify({"ok": True, "starting_mission_id": team.starting_mission_id})
 
@@ -354,7 +382,9 @@ def distribute_booths():
     active_event = _selected_event()
     teams = Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.id).all()
     missions = (
-        Mission.query.filter(Mission.status == "published", event_scope_filter(Mission, active_event.id))
+        Mission.query.filter(
+            Mission.status == "published", event_scope_filter(Mission, active_event.id)
+        )
         .order_by(Mission.order_index)
         .all()
     )
@@ -365,10 +395,16 @@ def distribute_booths():
     for i, team in enumerate(teams):
         mission = missions[i % len(missions)]
         team.starting_mission_id = mission.id
-        assignments[team.id] = {"team": team.name, "starting_mission_id": mission.id, "booth": mission.title}
+        assignments[team.id] = {
+            "team": team.name,
+            "starting_mission_id": mission.id,
+            "booth": mission.title,
+        }
 
     audit_service.log(
-        current_user, "game_master", "booths_distributed",
+        current_user,
+        "game_master",
+        "booths_distributed",
         metadata=f"{len(teams)} teams across {len(missions)} booths",
     )
     db.session.commit()
@@ -415,7 +451,9 @@ def generate_credential():
             # Masters stay unscoped (event_id=None) since one organizer commonly runs
             # multiple events, matching the founding GM accounts from before multi-event
             # support existed.
-            user = User(email=name, role=kind, event_id=active_event.id if kind != "game_master" else None)
+            user = User(
+                email=name, role=kind, event_id=active_event.id if kind != "game_master" else None
+            )
             db.session.add(user)
         full_name = (data.get("full_name") or "").strip()
         if full_name:
@@ -424,13 +462,19 @@ def generate_credential():
         login_path = "/auth/login"
         qr_lines = [f"DevCrypt Staff ({kind})", f"Email: {name}", f"Password: {secret}"]
     else:
-        return jsonify({"error": "kind must be 'team', 'game_master', 'booth_agent', or 'security_officer'."}), 400
+        return jsonify(
+            {"error": "kind must be 'team', 'game_master', 'booth_agent', or 'security_officer'."}
+        ), 400
 
     if kind == "team":
         action = "team_key_reissued" if reissuing else "team_created_with_key"
-        audit_service.log(current_user, "game_master", action, "team", team.id, team_id=team.id, metadata=name)
+        audit_service.log(
+            current_user, "game_master", action, "team", team.id, team_id=team.id, metadata=name
+        )
     else:
-        audit_service.log(current_user, "game_master", "credentials_generated", metadata=f"{kind}:{name}")
+        audit_service.log(
+            current_user, "game_master", "credentials_generated", metadata=f"{kind}:{name}"
+        )
     db.session.commit()
 
     qr_data_uri = None
@@ -444,7 +488,9 @@ def generate_credential():
     except ImportError:
         pass
 
-    return jsonify({"login": name, "secret": secret, "login_path": login_path, "qr_data_uri": qr_data_uri})
+    return jsonify(
+        {"login": name, "secret": secret, "login_path": login_path, "qr_data_uri": qr_data_uri}
+    )
 
 
 @mod_bp.route("/agents")
@@ -540,7 +586,9 @@ def assign_agent(mission_id):
         if agent.role != "booth_agent":
             return jsonify({"error": "User is not a booth agent."}), 400
         if not agent.is_active:
-            return jsonify({"error": "That agent is deactivated — reactivate them before assigning a booth."}), 400
+            return jsonify(
+                {"error": "That agent is deactivated — reactivate them before assigning a booth."}
+            ), 400
         mission.owner_agent_id = agent.id
     else:
         mission.owner_agent_id = None
@@ -586,7 +634,9 @@ def list_final_flag_pending():
     active_event = _selected_event()
     pending = (
         FinalFlagConfirmation.query.join(Team, FinalFlagConfirmation.team_id == Team.id)
-        .filter(FinalFlagConfirmation.confirmed_at.is_(None), event_scope_filter(Team, active_event.id))
+        .filter(
+            FinalFlagConfirmation.confirmed_at.is_(None), event_scope_filter(Team, active_event.id)
+        )
         .order_by(FinalFlagConfirmation.requested_at)
         .all()
     )
@@ -609,8 +659,13 @@ def confirm_final_flag(team_id):
     confirmation.confirmed_by = current_user.id
     confirmation.confirmed_at = datetime.utcnow()
     audit_service.log(
-        current_user, "game_master", "final_flag_confirmed", "team", team_id,
-        team_id=team_id, metadata=confirmation.team.name,
+        current_user,
+        "game_master",
+        "final_flag_confirmed",
+        "team",
+        team_id,
+        team_id=team_id,
+        metadata=confirmation.team.name,
     )
     db.session.commit()
     event_id = confirmation.team.event_id or event_service.get_active_event().id
@@ -631,7 +686,7 @@ def override_score(team_mission_id):
     if team_mission.status in ("passed", "overridden", "soft_locked"):
         abort(409)
     try:
-        new_score = int(request.form.get("score"))
+        new_score = int(request.form.get("score"))  # type: ignore[arg-type]  # None caught below
     except (TypeError, ValueError):
         abort(400)
 
@@ -639,8 +694,14 @@ def override_score(team_mission_id):
     team_mission.score = new_score
     team_mission.team.score = max(0, team_mission.team.score + delta)
     audit_service.log(
-        current_user, "game_master", "score_override", "team_mission", team_mission.id,
-        team_id=team_mission.team_id, score_delta=delta, metadata=str(new_score),
+        current_user,
+        "game_master",
+        "score_override",
+        "team_mission",
+        team_mission.id,
+        team_id=team_mission.team_id,
+        score_delta=delta,
+        metadata=str(new_score),
     )
     db.session.commit()
     event_id = team_mission.team.event_id or event_service.get_active_event().id
@@ -663,7 +724,11 @@ def reset_mission(team_mission_id):
     team_mission.submission_text = None
     mission_service.unfreeze_submission(team_mission)
     audit_service.log(
-        current_user, "game_master", "mission_reset", "team_mission", team_mission.id,
+        current_user,
+        "game_master",
+        "mission_reset",
+        "team_mission",
+        team_mission.id,
         team_id=team_mission.team_id,
     )
     db.session.commit()
@@ -678,12 +743,14 @@ def reset_mission(team_mission_id):
 def extend_timer(team_mission_id):
     team_mission = TeamMission.query.get_or_404(team_mission_id)
     try:
-        seconds = int(request.form.get("seconds"))
+        seconds = int(request.form.get("seconds"))  # type: ignore[arg-type]  # None caught below
     except (TypeError, ValueError):
         abort(400)
     if seconds <= 0:
         abort(400)
-    if not mission_service.extend_timer(team_mission, seconds, actor=current_user, actor_role="game_master"):
+    if not mission_service.extend_timer(
+        team_mission, seconds, actor=current_user, actor_role="game_master"
+    ):
         abort(409)
     return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
 
@@ -811,7 +878,9 @@ def events():
 def create_event():
     name = (request.form.get("name") or "").strip()
     event = event_service.create_event(name=name)
-    audit_service.log(current_user, "game_master", "event_created", "event", event.id, metadata=name)
+    audit_service.log(
+        current_user, "game_master", "event_created", "event", event.id, metadata=name
+    )
     db.session.commit()
     session["gm_event_id"] = event.id
     flash(f"Created '{event.name or 'Untitled event'}' — now selected.", "success")
@@ -826,10 +895,16 @@ def duplicate_event(event_id):
     name = (request.form.get("name") or "").strip() or None
     new_event = event_service.duplicate_event(event_id, name=name)
     audit_service.log(
-        current_user, "game_master", "event_duplicated", "event", new_event.id,
+        current_user,
+        "game_master",
+        "event_duplicated",
+        "event",
+        new_event.id,
         metadata=f"from {source.name or source.id}",
     )
-    flash(f"Duplicated '{source.name or source.id}' as '{new_event.name or new_event.id}'.", "success")
+    flash(
+        f"Duplicated '{source.name or source.id}' as '{new_event.name or new_event.id}'.", "success"
+    )
     return redirect(url_for("mod.events"))
 
 
@@ -858,8 +933,12 @@ def override(team_mission_id):
     if team_mission.status in ("passed", "overridden", "soft_locked"):
         abort(409)
     mission_service.complete_mission(
-        team_mission.team, team_mission, team_mission.mission, "overridden",
-        actor=current_user, actor_role="game_master",
+        team_mission.team,
+        team_mission,
+        team_mission.mission,
+        "overridden",
+        actor=current_user,
+        actor_role="game_master",
     )
     return redirect(url_for("mod.team_detail", team_id=team_mission.team_id))
 
@@ -871,10 +950,20 @@ def export_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(
-        ["team", "score", "integrity", "fragments", "clearance_stamps", "missions_passed", "hints_used"]
+        [
+            "team",
+            "score",
+            "integrity",
+            "fragments",
+            "clearance_stamps",
+            "missions_passed",
+            "hints_used",
+        ]
     )
     active_event = _selected_event()
-    for team in Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all():
+    for team in (
+        Team.query.filter(event_scope_filter(Team, active_event.id)).order_by(Team.name).all()
+    ):
         writer.writerow(
             [
                 team.name,
@@ -897,7 +986,18 @@ def export_csv():
 def export_submissions_csv():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["team", "mission", "mode", "total_tests", "passed_tests", "percent_score", "passed", "created_at"])
+    writer.writerow(
+        [
+            "team",
+            "mission",
+            "mode",
+            "total_tests",
+            "passed_tests",
+            "percent_score",
+            "passed",
+            "created_at",
+        ]
+    )
     active_event = _selected_event()
     subs = (
         CodeSubmission.query.join(TeamMission, CodeSubmission.team_mission_id == TeamMission.id)
@@ -930,11 +1030,17 @@ def export_submissions_csv():
 def export_challenges_csv():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["mission", "difficulty", "grading_mode", "attempts", "passed", "pass_rate_percent"])
+    writer.writerow(
+        ["mission", "difficulty", "grading_mode", "attempts", "passed", "pass_rate_percent"]
+    )
     active_event = _selected_event()
-    stats_by_mission = {s["mission_id"]: s for s in analytics_service.challenge_stats(event_id=active_event.id)}
+    stats_by_mission = {
+        s["mission_id"]: s for s in analytics_service.challenge_stats(event_id=active_event.id)
+    }
     for mission in (
-        Mission.query.filter(event_scope_filter(Mission, active_event.id)).order_by(Mission.order_index).all()
+        Mission.query.filter(event_scope_filter(Mission, active_event.id))
+        .order_by(Mission.order_index)
+        .all()
     ):
         challenge = mission.challenge
         stat = stats_by_mission.get(mission.id)
@@ -963,11 +1069,16 @@ def export_event_stats_csv():
     pass_fail = analytics_service.pass_fail_counts(event_id=active_event.id)
     hint_usage = analytics_service.hint_usage(event_id=active_event.id)
     writer.writerow(["metric", "value"])
-    writer.writerow(["total_submissions", analytics_service.total_submissions(event_id=active_event.id)])
+    writer.writerow(
+        ["total_submissions", analytics_service.total_submissions(event_id=active_event.id)]
+    )
     writer.writerow(["submissions_passed", pass_fail["passed"]])
     writer.writerow(["submissions_failed", pass_fail["failed"]])
     writer.writerow(
-        ["average_completion_seconds", analytics_service.average_completion_seconds(event_id=active_event.id) or ""]
+        [
+            "average_completion_seconds",
+            analytics_service.average_completion_seconds(event_id=active_event.id) or "",
+        ]
     )
     writer.writerow(["total_hints_used", hint_usage["total_hints_used"]])
     writer.writerow(["missions_with_hint_used", hint_usage["missions_with_hint_used"]])
@@ -997,6 +1108,8 @@ def analytics_data():
             "average_completion_seconds": avg_seconds,
             "hint_usage": analytics_service.hint_usage(event_id=active_event.id),
             "challenge_stats": analytics_service.challenge_stats(event_id=active_event.id),
-            "most_failed_challenge": analytics_service.most_failed_challenge(event_id=active_event.id),
+            "most_failed_challenge": analytics_service.most_failed_challenge(
+                event_id=active_event.id
+            ),
         }
     )
