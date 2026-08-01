@@ -1,0 +1,19 @@
+name: Release
+
+# Purely additive record-keeping: Railway already auto-deploys on every push to main, and this
+# workflow does not change that. Tag main (e.g. after confirming a deploy is healthy) to get a
+# GitHub Release with auto-generated notes -- see docs/DEPLOYMENT_CHECKLIST.md for when to tag.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

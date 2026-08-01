@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app import create_app
@@ -7,7 +9,12 @@ from app.models import User
 
 
 class TestConfig(Config):
-    SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    # Defaults to the fast in-memory SQLite every local `pytest` run has always used --
+    # TEST_DATABASE_URL is only set in CI's test-backend-postgres job (a postgres:16 service
+    # container), so this same suite also runs against real Postgres there. That job exists
+    # because a past incident (AdminResetService's bulk-delete bypassing cascade behavior) only
+    # broke on Postgres's real FK enforcement and passed every local SQLite test.
+    SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")
     SQLALCHEMY_ENGINE_OPTIONS = engine_options_for(SQLALCHEMY_DATABASE_URI)
     SECRET_KEY = "test-secret"
     EVENT_SALT = "test-salt"
@@ -43,6 +50,13 @@ def app():
     with application.app_context():
         db.create_all()
     yield application
+    # In-memory SQLite is already a blank slate per test (a fresh engine = a fresh :memory: DB),
+    # but TEST_DATABASE_URL pointed at a real, persistent Postgres container (CI's
+    # test-backend-postgres job) would otherwise leak rows from one test into the next. Cheap
+    # and harmless for the SQLite case, required for correctness in the Postgres one.
+    with application.app_context():
+        db.session.remove()
+        db.drop_all()
 
 
 @pytest.fixture
