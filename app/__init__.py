@@ -132,6 +132,14 @@ def create_app(config_class=Config):
         return render_template("index.html")
 
     @app.route("/healthz")
+    # Railway's healthcheck probes the container directly over plain HTTP -- TLS terminates at
+    # Railway's edge, never reaching the container itself -- so force_https (correctly enforced
+    # for every real, proxied request via Talisman's own X-Forwarded-Proto check) would otherwise
+    # 302-redirect the healthcheck instead of returning 200, and Railway tears the deployment
+    # down as unhealthy. This is Flask-Talisman's own documented per-view exemption mechanism,
+    # scoped to exactly this route -- everything else keeps full HTTPS enforcement. /healthz
+    # returns no session cookie and no user data, so there is nothing here for HTTPS to protect.
+    @talisman(force_https=False)
     def healthz():
         # Round-trips the DB so a monitor/uptime-pinger catches a dead connection pool or a
         # sleeping free-tier host, not just "the process is technically still running."

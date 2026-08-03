@@ -106,3 +106,35 @@ def test_repeated_failed_team_logins_are_rate_limited():
         for _ in range(15)
     ]
     assert 429 in statuses
+
+
+def _https_enforced_app():
+    class HTTPSEnforcedConfig(TestConfig):
+        # Mirrors real production (SESSION_COOKIE_SECURE = not sqlite): this is the exact flag
+        # that drives Talisman's force_https, off by default in TestConfig so the rest of the
+        # suite can hit routes over plain http without every request 302-redirecting.
+        SESSION_COOKIE_SECURE = True
+
+    return create_app(HTTPSEnforcedConfig)
+
+
+def test_healthz_is_reachable_without_https_redirect():
+    # Regression test for a real incident: Railway's healthcheck probes the container directly
+    # over plain HTTP (TLS terminates at Railway's edge, never reaching the container), so
+    # force_https redirecting /healthz to https instead of returning 200/503 made every
+    # deployment fail its healthcheck and get rolled back, even though the app itself was fine.
+    app = _https_enforced_app()
+    client = app.test_client()
+    res = client.get("/healthz")
+    assert res.status_code in (200, 503)
+    assert "Location" not in res.headers
+
+
+def test_unexempted_routes_still_redirect_to_https_when_enforced():
+    # The other half of the same regression test: proves the /healthz exemption is scoped to
+    # that one route only, not a global weakening of force_https for the rest of the app.
+    app = _https_enforced_app()
+    client = app.test_client()
+    res = client.get("/")
+    assert res.status_code == 302
+    assert res.headers["Location"].startswith("https://")
