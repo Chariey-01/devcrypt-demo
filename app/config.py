@@ -99,13 +99,19 @@ class Config:
     # by engine_options_for() above, not a new env var.
     SESSION_COOKIE_SECURE = not SQLALCHEMY_DATABASE_URI.startswith("sqlite")
 
-    # Single source of truth for every cross-origin trust decision this app makes: Socket.IO's
-    # CORS (below), the REST CORS applied to the player-facing blueprints (app/__init__.py), and
-    # nothing else -- GM/Agent/Security/mod stay server-rendered, same-origin, and never consult
-    # this. Comma-separated so local Vite dev (http://localhost:5173) and the production Vercel
-    # domain can both be trusted at once without two separate env vars. Unset falls back to "*"
-    # (local demo, LAN IP varies per laptop); set ALLOWED_ORIGIN to the real Vercel URL(s) for
-    # production, e.g. "https://devcrypt.vercel.app".
+    # Trust source for the REST CORS applied to the player-facing blueprints only
+    # (app/__init__.py) -- the Vercel-hosted React app calling this API cross-origin. Comma-
+    # separated so local Vite dev (http://localhost:5173) and the production Vercel domain can
+    # both be trusted at once. Unset falls back to "*" (local demo). Set ALLOWED_ORIGIN to the
+    # real Vercel URL(s) for production, e.g. "https://devcrypt.vercel.app".
+    #
+    # Deliberately NOT shared with SOCKETIO_CORS_ALLOWED_ORIGINS below, despite both being
+    # "cross-origin trust" settings -- found the hard way (a live GM dashboard losing its
+    # WebSocket connection) that they need different values. Socket.IO is used by GM/Agent/
+    # Security/mod/leaderboard, which are all still server-rendered and SAME-origin to Flask
+    # itself; REST CORS here is used by the Vercel app, a genuinely DIFFERENT origin. Pointing
+    # both at "the Vercel URL" broke Socket.IO for every staff page, since Flask's own origin
+    # was no longer in Socket.IO's allowed list.
     _allowed_origin_env = os.getenv("ALLOWED_ORIGIN", "*")
     ALLOWED_ORIGINS = (
         "*"
@@ -113,12 +119,12 @@ class Config:
         else [origin.strip() for origin in _allowed_origin_env.split(",") if origin.strip()]
     )
 
-    # Socket.IO's handshake carries the session cookie like any other request, so an overly
-    # permissive CORS setting here would let a third-party site open a session-authenticated
-    # WebSocket connection on a logged-in visitor's behalf. Low actual impact today (every
-    # push payload is a stateless {"type": "..."} ping, never a score/flag/fragment — see
-    # app/sockets.py), but tightened anyway as defense in depth.
-    SOCKETIO_CORS_ALLOWED_ORIGINS = ALLOWED_ORIGINS
+    # Same-origin to Flask for every page that uses it (GM/Agent/Security/mod/leaderboard), so
+    # this doesn't need -- and must not reuse -- ALLOWED_ORIGINS above (see the comment on it).
+    # Left permissive: every push payload is a stateless {"type": "..."} ping, never a score/
+    # flag/fragment (see app/sockets.py), and the session cookie doing the real access-control
+    # work here is SameSite-protected already.
+    SOCKETIO_CORS_ALLOWED_ORIGINS = "*"
 
     # Where an authenticated team lands after /missions/play -- the standalone Vite/React app,
     # no longer served by Flask itself. Defaults to Vite's own local dev server port so local

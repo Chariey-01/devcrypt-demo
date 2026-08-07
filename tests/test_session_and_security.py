@@ -231,6 +231,17 @@ def test_cors_is_not_applied_to_gm_dashboard_routes():
     assert "Access-Control-Allow-Origin" not in res.headers
 
 
+def test_socketio_cors_stays_permissive_even_when_rest_cors_is_restricted():
+    # Regression test for a real incident found while stabilization-testing the Vercel split
+    # live: ALLOWED_ORIGIN restricted to the Vercel domain used to also restrict
+    # SOCKETIO_CORS_ALLOWED_ORIGINS (they were the same setting), which broke the GM dashboard's
+    # own WebSocket connection -- Socket.IO is same-origin to Flask (GM/Agent/Security/mod/
+    # leaderboard), a completely different origin than the Vercel REST CORS setting governs.
+    app = _cross_origin_app()
+    assert app.config["ALLOWED_ORIGINS"] == ["https://devcrypt-player.example.vercel.app"]
+    assert app.config["SOCKETIO_CORS_ALLOWED_ORIGINS"] == "*"
+
+
 def test_refuses_to_start_against_postgres_with_insecure_default_secrets():
     # Regression test for a real gap found in the production stabilization audit: SECRET_KEY,
     # EVENT_SALT, and VERCEL_APP_URL all fall back to well-known, non-secret defaults so a fresh
