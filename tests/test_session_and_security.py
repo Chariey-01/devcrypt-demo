@@ -3,6 +3,8 @@ runs with WTF_CSRF_ENABLED/RATELIMIT_ENABLED off (see conftest.TestConfig) so ev
 file can post like a same-origin fetch() call without a token -- this file spins up its own app
 with both re-enabled to verify the protections actually engage."""
 
+import pytest
+
 from app import create_app
 from app.extensions import db
 from app.models import Team
@@ -227,3 +229,29 @@ def test_cors_is_not_applied_to_gm_dashboard_routes():
     origin = "https://devcrypt-player.example.vercel.app"
     res = client.get("/mod/", headers={"Origin": origin})
     assert "Access-Control-Allow-Origin" not in res.headers
+
+
+def test_refuses_to_start_against_postgres_with_insecure_default_secrets():
+    # Regression test for a real gap found in the production stabilization audit: SECRET_KEY,
+    # EVENT_SALT, and VERCEL_APP_URL all fall back to well-known, non-secret defaults so a fresh
+    # local checkout works with zero setup -- exactly the wrong behavior if one is ever left
+    # unset in a real deploy. This must fail loudly at boot, not silently serve a guessable
+    # secret or send every team's browser to localhost.
+    class InsecureProductionConfig(TestConfig):
+        SQLALCHEMY_DATABASE_URI = "postgresql://fake:fake@localhost/fake"
+        SECRET_KEY = "devcrypt-demo-secret"  # the real Config's own insecure default
+
+    with pytest.raises(RuntimeError, match="SECRET_KEY"):
+        create_app(InsecureProductionConfig)
+
+
+def test_starts_fine_against_postgres_once_real_secrets_are_set():
+    # The other half: proves the check is scoped to the specific insecure default values, not
+    # "always refuse non-SQLite" -- a real deploy with real secrets must boot normally.
+    class RealProductionConfig(TestConfig):
+        SQLALCHEMY_DATABASE_URI = "postgresql://fake:fake@localhost/fake"
+        SECRET_KEY = "a-real-random-secret"
+        EVENT_SALT = "a-real-random-salt"
+        VERCEL_APP_URL = "https://devcrypt.vercel.app"
+
+    create_app(RealProductionConfig)  # must not raise

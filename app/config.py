@@ -125,3 +125,31 @@ class Config:
     # development keeps working without an env var; must be set to the real Vercel production
     # URL in production.
     VERCEL_APP_URL = os.getenv("VERCEL_APP_URL", "http://localhost:5173")
+
+
+# Fallback values above exist so a fresh local checkout runs with zero setup -- exactly the
+# wrong behavior in production, where an unset env var should fail loudly at boot, not silently
+# serve a known, guessable secret (SECRET_KEY/EVENT_SALT) or redirect every team to localhost
+# (VERCEL_APP_URL). Checked once, in create_app(), against the same SQLite-vs-Postgres signal
+# used throughout this file rather than a new env var of its own.
+INSECURE_PRODUCTION_DEFAULTS = {
+    "SECRET_KEY": "devcrypt-demo-secret",
+    "EVENT_SALT": "devcrypt-demo-event-salt",
+    "VERCEL_APP_URL": "http://localhost:5173",
+}
+
+
+def fail_if_production_secrets_are_unset(app):
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+        return  # local/demo path -- these fallbacks are the whole point there
+    unset = [
+        name
+        for name, insecure_value in INSECURE_PRODUCTION_DEFAULTS.items()
+        if app.config.get(name) == insecure_value
+    ]
+    if unset:
+        raise RuntimeError(
+            "Refusing to start against a non-SQLite database with insecure default value(s) "
+            f"still set for: {', '.join(unset)}. Set real values via environment variables "
+            "before deploying -- see docs/DEPLOYMENT_CHECKLIST.md."
+        )

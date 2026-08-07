@@ -32,7 +32,7 @@ from .blueprints.mod import mod_bp
 from .blueprints.portals import portals_bp
 from .blueprints.scoring import scoring_bp
 from .blueprints.security import security_bp
-from .config import Config
+from .config import Config, fail_if_production_secrets_are_unset
 from .errors import register_error_handlers
 from .extensions import bcrypt, csrf, db, limiter, login_manager, migrate, socketio, talisman
 from .icons import icon
@@ -55,6 +55,7 @@ def create_app(config_class=Config):
     _configure_logging()
     app = Flask(__name__)
     app.config.from_object(config_class)
+    fail_if_production_secrets_are_unset(app)
 
     # Railway (and any platform fronting the app with a TLS-terminating proxy) sits in front of
     # this single gunicorn worker, so request.remote_addr would otherwise always be the proxy's
