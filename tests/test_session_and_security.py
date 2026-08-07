@@ -269,6 +269,39 @@ def test_cors_rejects_an_unlisted_origin_on_missions_routes():
     assert res.headers.get("Access-Control-Allow-Origin") != "https://evil.example.com"
 
 
+def test_csrf_is_still_enforced_on_missions_routes_under_the_cross_origin_config():
+    # CORS and CSRF are orthogonal protections -- CORS only controls whether a browser lets
+    # cross-origin JS read a response, it has no bearing on whether the server accepts a POST.
+    # This proves trusting the Vercel origin via ALLOWED_ORIGINS didn't also (accidentally or
+    # otherwise) weaken CSRF enforcement on the same missions_bp routes it applies to: an
+    # allowed-origin POST with no/invalid CSRF token must still be rejected the same as any
+    # same-origin one (see test_post_without_csrf_token_is_rejected), not silently trusted
+    # because the Origin header matches.
+    class CrossOriginCSRFConfig(TestConfig):
+        SESSION_COOKIE_SECURE = True
+        SESSION_COOKIE_SAMESITE = "None"
+        ALLOWED_ORIGINS = ["https://devcrypt-player.example.vercel.app"]
+        WTF_CSRF_ENABLED = True
+
+    app = create_app(CrossOriginCSRFConfig)
+    with app.app_context():
+        db.create_all()
+        team = Team(name="Alpha", score=0, integrity=100)
+        team.set_key("ALPHA01")
+        db.session.add(team)
+        db.session.commit()
+
+    client = app.test_client()
+    _login_team(client)
+    res = client.post(
+        "/missions/hint", headers={"Origin": "https://devcrypt-player.example.vercel.app"}
+    )
+    # 400 with app/errors.py's own friendly CSRFError handler message, same as any same-origin
+    # request missing a token -- see test_post_without_csrf_token_is_rejected.
+    assert res.status_code == 400
+    assert "expired" in res.get_data(as_text=True).lower()
+
+
 def test_cors_is_not_applied_to_gm_dashboard_routes():
     # Proves the CORS scope is deliberately narrow (missions + the csrf-token route only), not
     # sitewide -- GM/Agent/Security/mod stay server-rendered, same-origin, no new attack surface.
