@@ -368,6 +368,14 @@ class TeamKnowledgeAnswer(db.Model):
         "KnowledgeOption", backref=db.backref("team_answers", cascade="all, delete-orphan")
     )
 
+    # Without this, two near-simultaneous submissions of the same question (a double-click, or
+    # a slow response the player retries) both pass missions.py's check-then-insert
+    # ("has this been answered yet?") before either commits, insert two rows, and double-award
+    # points -- confirmed as a real race under gevent's cooperative concurrency, not just a
+    # theoretical one. Mirrors the same UniqueConstraint-as-race-guard pattern already used by
+    # TeamMission and Fragment above.
+    __table_args__ = (db.UniqueConstraint("team_mission_id", "question_id"),)
+
 
 class Fragment(db.Model):
     __tablename__ = "fragments"

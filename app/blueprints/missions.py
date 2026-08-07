@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, current_app, jsonify, redirect, request
+from sqlalchemy.exc import IntegrityError
 
 from ..decorators import current_team, team_required
 from ..extensions import db
@@ -355,22 +356,49 @@ def answer_knowledge_question(question_id):
     )
     db.session.add(answer)
 
-    if option.is_correct:
-        db.session.refresh(team, with_for_update=True)
-        scoring_service.score_knowledge_correct(team, team_mission)
-
-    # This answer just completed the assigned set for this booth -- award the "all correct"
-    # bonus if every one of them (including this one) was right. db.session.add(answer) above
-    # hasn't been committed yet, but team_mission.knowledge_answers is a live relationship, so
-    # it won't include `answer` until it's flushed -- flush (not commit) first so the "is this
-    # the last one, were they all correct" check below sees the complete, accurate set.
-    db.session.flush()
-    if len(team_mission.knowledge_answers) >= len(assigned_questions):
-        if all(a.is_correct for a in team_mission.knowledge_answers):
+    try:
+        if option.is_correct:
             db.session.refresh(team, with_for_update=True)
-            scoring_service.award_all_mcq_correct_bonus(team, team_mission)
+            scoring_service.score_knowledge_correct(team, team_mission)
 
-    db.session.commit()
+        # This answer just completed the assigned set for this booth -- award the "all correct"
+        # bonus if every one of them (including this one) was right. db.session.add(answer)
+        # above hasn't been committed yet, but team_mission.knowledge_answers is a live
+        # relationship, so it won't include `answer` until it's flushed -- flush (not commit)
+        # first so the "is this the last one, were they all correct" check below sees the
+        # complete, accurate set.
+        db.session.flush()
+        if len(team_mission.knowledge_answers) >= len(assigned_questions):
+            if all(a.is_correct for a in team_mission.knowledge_answers):
+                db.session.refresh(team, with_for_update=True)
+                scoring_service.award_all_mcq_correct_bonus(team, team_mission)
+
+        db.session.commit()
+    except IntegrityError:
+        # Two near-simultaneous submissions of the same question both passed the
+        # "already answered?" check above before either committed -- TeamKnowledgeAnswer's
+        # UniqueConstraint(team_mission_id, question_id) rejects the second insert. Same shape
+        # as MissionService.complete_mission's Fragment race: discard this attempt's score
+        # changes and report the answer that actually won, instead of a raw 500 or a double-award.
+        db.session.rollback()
+        existing = TeamKnowledgeAnswer.query.filter_by(
+            team_mission_id=team_mission.id, question_id=question.id
+        ).first()
+        if existing is None:
+            # Rarer interleaving: the rollback discarded this attempt, but the "winning"
+            # concurrent attempt hadn't durably committed yet either (e.g. it also rolled back
+            # for its own reason) -- nobody's answer actually survived. Ask the client to retry
+            # rather than guess at a result or crash on None.is_correct.
+            return jsonify({"error": "Answer was not recorded, please try again."}), 409
+        return jsonify(
+            {
+                "correct": existing.is_correct,
+                "message": NARRATIVE["knowledge_correct"]
+                if existing.is_correct
+                else NARRATIVE["knowledge_wrong"],
+                "already_answered": True,
+            }
+        )
 
     return jsonify(
         {

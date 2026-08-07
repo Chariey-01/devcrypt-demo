@@ -106,7 +106,7 @@ class MissionService:
         team_mission.submission_status = None
         team_mission.grading_status = None
 
-    def get_or_create_team_mission(self, team, mission, event_running=True):
+    def get_or_create_team_mission(self, team, mission, event_running=True, _retried=False):
         # event_running gates the timer, not the row's existence -- a team browsing the
         # dashboard before the Game Master starts (or during a pause) still needs its
         # TeamMission row (attempts/hints/knowledge answers persist across that wait), it just
@@ -123,17 +123,39 @@ class MissionService:
                 started_at=datetime.utcnow() if event_running else None,
             )
             db.session.add(team_mission)
-            db.session.flush()  # assigns team_mission.id for the audit log below
-            self.audit.log(
-                None,
-                "team",
-                "mission_opened",
-                "team_mission",
-                team_mission.id,
-                team_id=team.id,
-                metadata=f"{team.name}: {mission.title}",
-            )
-            db.session.commit()
+            try:
+                db.session.flush()  # assigns team_mission.id for the audit log below
+                self.audit.log(
+                    None,
+                    "team",
+                    "mission_opened",
+                    "team_mission",
+                    team_mission.id,
+                    team_id=team.id,
+                    metadata=f"{team.name}: {mission.title}",
+                )
+                db.session.commit()
+            except IntegrityError:
+                # Two tabs (or a poll racing a page load) both saw no existing row and both
+                # tried to create one -- team_id+mission_id's UniqueConstraint rejects the
+                # second insert. Same shape as complete_mission's Fragment race below: discard
+                # this attempt and use whichever row actually won, instead of a raw 500.
+                db.session.rollback()
+                team_mission = TeamMission.query.filter_by(
+                    team_id=team.id, mission_id=mission.id
+                ).first()
+                if team_mission is None and not _retried:
+                    # Rarer interleaving (found via testing, not just theorized): the rollback
+                    # discarded this attempt, but whatever else conflicted with it hadn't
+                    # durably committed either -- genuinely nothing exists now. One bounded
+                    # retry is safe: there's no more conflict left to lose to in the normal
+                    # case, so it either finds a row that landed in between, or creates one
+                    # cleanly. _retried caps this at one attempt -- a second, persistent
+                    # failure (this should never happen twice in a row for a real transient
+                    # race) raises for real instead of silently looping.
+                    return self.get_or_create_team_mission(
+                        team, mission, event_running, _retried=True
+                    )
         elif (
             team_mission.started_at is None and event_running and team_mission.submitted_at is None
         ):
