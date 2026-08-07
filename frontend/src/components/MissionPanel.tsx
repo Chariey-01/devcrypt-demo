@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_BASE } from "../api";
 import { Icon } from "../icons";
 import { computeTimerDisplay } from "../lib/timer";
 import { KnowledgeCheck } from "./KnowledgeCheck";
@@ -57,7 +58,11 @@ export function MissionPanel({
   const activeEvidence = mission.evidence_files[activeTab];
   let evidenceContent: React.ReactNode = null;
   if (activeEvidence?.has_binary) {
-    const downloadUrl = `/missions/assets/${activeEvidence.id}/download`;
+    // Absolute, not relative: this bundle is hosted on Vercel now, and a relative path here
+    // would resolve against the Vercel origin instead of the Railway API (unlike api()'s fetch
+    // calls, a plain <a href>/<img src> the browser navigates to directly has no fetch wrapper
+    // to prepend API_BASE for it).
+    const downloadUrl = `${API_BASE}/missions/assets/${activeEvidence.id}/download`;
     evidenceContent = (activeEvidence.mime_type || "").startsWith("image/") ? (
       <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
         <img

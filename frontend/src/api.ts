@@ -6,7 +6,10 @@
 // GET /auth/csrf-token (app/blueprints/auth.py) -- Flask-WTF's own documented pattern for this
 // exact case -- and cached for the life of the page load.
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+// Exported (not just used internally) because a handful of call sites outside api() build
+// non-JSON URLs directly -- e.g. MissionPanel.tsx's evidence-file download/image links, which
+// the browser navigates to or loads as an <img src>, not something api()'s fetch wrapper touches.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export interface ApiResult<T> {
   ok: boolean;
