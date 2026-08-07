@@ -1,8 +1,18 @@
 import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from flask import Blueprint, Response, abort, current_app, jsonify, redirect, request
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    current_app,
+    jsonify,
+    redirect,
+    request,
+    send_from_directory,
+)
 from sqlalchemy.exc import IntegrityError
 
 from ..decorators import current_team, team_required
@@ -53,13 +63,25 @@ NARRATIVE = {
 }
 
 
+FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+
 @missions_bp.route("/play")
 @team_required
 def play():
-    # The player dashboard is a standalone React app on Vercel now (frontend/), not rendered by
-    # Flask -- this route stays the one place that knows where "play" actually lives, so
-    # auth.team_login()'s redirect (and anything else that does url_for("missions.play")) never
-    # needs to know the Vercel URL directly, only this route does.
+    # The player dashboard is a standalone React app -- on Vercel in production, but NFR-05's
+    # single-laptop/no-internet local demo has no separate deployment to redirect to. If
+    # `cd frontend && npm run build` was run locally (see DEPLOYMENT.md's local-demo setup),
+    # serve that build directly from this same Flask process instead of redirecting to a URL
+    # nothing is listening on (VERCEL_APP_URL's own localhost:5173 default) -- the built
+    # bundle's API calls are relative (see frontend/src/api.ts's API_BASE), so they resolve
+    # correctly against this same origin. Production (Postgres) always redirects to the real
+    # Vercel deployment, unchanged. Local *development* against a running `npm run dev` server
+    # also falls through to the redirect below, since frontend/dist/ won't exist until a build
+    # actually runs.
+    is_local_demo = current_app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite")
+    if is_local_demo and (FRONTEND_DIST / "index.html").exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
     return redirect(current_app.config["VERCEL_APP_URL"])
 
 

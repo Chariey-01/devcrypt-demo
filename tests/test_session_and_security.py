@@ -59,6 +59,54 @@ def test_deleted_team_session_navigation_redirects_to_team_login(client, app):
     assert res.headers["Location"].endswith("/auth/team-login")
 
 
+def test_play_redirects_to_vercel_app_url_when_no_local_frontend_build_exists(
+    client, app, monkeypatch, tmp_path
+):
+    # The realistic CI/fresh-checkout state: frontend/dist/ is gitignored and only exists if
+    # someone has run `npm run build` locally. Without it, the local-demo fallback in
+    # missions.play() must not kick in -- this is what makes local `npm run dev` still work.
+    # Points FRONTEND_DIST at an empty tmp_path rather than trusting the real repo state, since
+    # a developer running this suite locally may well have a real frontend/dist/ built already.
+    from app.blueprints import missions
+
+    monkeypatch.setattr(missions, "FRONTEND_DIST", tmp_path)
+
+    with app.app_context():
+        team = Team(name="Alpha", score=0, integrity=100)
+        team.set_key("ALPHA01")
+        db.session.add(team)
+        db.session.commit()
+    _login_team(client)
+
+    res = client.get("/missions/play", headers={"Accept": "text/html"})
+    assert res.status_code == 302
+    assert res.headers["Location"] == app.config["VERCEL_APP_URL"]
+
+
+def test_play_serves_the_local_build_directly_when_one_exists(client, app, monkeypatch, tmp_path):
+    # Regression test for NFR-05 (single laptop, no internet): once the Vercel split moved the
+    # player dashboard off Flask, a bare `python3 run.py` stopped being enough for the local
+    # demo -- /missions/play would redirect to VERCEL_APP_URL's localhost:5173 default with
+    # nothing listening there. missions.play() now serves a pre-built frontend/dist/ directly
+    # instead, same-origin, when running against SQLite (the local-demo signal already used
+    # throughout app/config.py).
+    from app.blueprints import missions
+
+    (tmp_path / "index.html").write_text("<div id='player-root'>local build</div>")
+    monkeypatch.setattr(missions, "FRONTEND_DIST", tmp_path)
+
+    with app.app_context():
+        team = Team(name="Alpha", score=0, integrity=100)
+        team.set_key("ALPHA01")
+        db.session.add(team)
+        db.session.commit()
+    _login_team(client)
+
+    res = client.get("/missions/play", headers={"Accept": "text/html"})
+    assert res.status_code == 200
+    assert b"local build" in res.data
+
+
 def _csrf_enabled_app():
     class CSRFEnabledConfig(TestConfig):
         WTF_CSRF_ENABLED = True

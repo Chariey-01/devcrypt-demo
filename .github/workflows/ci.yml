@@ -8,7 +8,9 @@ on:
 
 env:
   PYTHON_VERSION: "3.12"
-  NODE_VERSION: "20"
+  # Matches frontend/package.json's engines.node -- Vercel deprecated Node 20 in production
+  # builds, so keep CI on the same version actually used to deploy rather than let it drift.
+  NODE_VERSION: "24"
 
 jobs:
   lint-backend:

@@ -18,7 +18,7 @@ except ImportError:
 import logging
 import os
 
-from flask import Flask, render_template
+from flask import Flask, render_template, send_from_directory
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -155,6 +155,17 @@ def create_app(config_class=Config):
     @app.route("/")
     def home():
         return render_template("index.html")
+
+    @app.route("/assets/<path:filename>")
+    def frontend_assets(filename):
+        # Serves the hashed JS/CSS bundle for the locally-built player SPA
+        # (frontend/dist/assets/) -- only actually reachable via missions.play()'s local-demo
+        # fallback, since production always redirects to the real Vercel deployment instead,
+        # which serves its own assets. 404s harmlessly if frontend/dist was never built.
+        from pathlib import Path
+
+        dist_assets = Path(__file__).resolve().parent.parent / "frontend" / "dist" / "assets"
+        return send_from_directory(dist_assets, filename)
 
     @app.route("/healthz")
     # Railway's healthcheck probes the container directly over plain HTTP -- TLS terminates at
