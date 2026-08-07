@@ -4,8 +4,10 @@ Committed and tracked (unlike `docs/DEPLOYMENT.md`, which is local-only) because
 is meant to gate every release through the same PR review this repo's branch protection already
 requires — it needs to be visible in a diff, not just known to whoever wrote it.
 
-Railway auto-deploys on every push to `main`. Nothing here changes that; this is what to confirm
-**before** merging the PR that will trigger it, and what to do right after.
+Railway (backend) and Vercel (frontend, `frontend/`) both auto-deploy on every push to `main` —
+two independent deployments triggered by the same push, not one. Nothing here changes that;
+this is what to confirm **before** merging the PR that will trigger it, and what to do right
+after.
 
 ## Before merging to `main`
 
@@ -24,9 +26,10 @@ Railway auto-deploys on every push to `main`. Nothing here changes that; this is
         "postgresql": ... else: ...`) if SQLite and Postgres could plausibly diverge — they have
         before (unnamed vs. named constraints, `ALTER TABLE` support).
       - Both `upgrade()` and `downgrade()` were actually tested, not just `upgrade()`.
-- [ ] If `frontend/` changed: `npm run build` was re-run and the output committed nowhere
-      (build output isn't committed — Railway's own `buildCommand` regenerates it) — just confirm
-      the PR doesn't include a stray hand-edited file under `app/static/dist/`.
+- [ ] If `frontend/` changed: build output isn't committed anywhere (`frontend/dist/` is
+      gitignored — Vercel's own `buildCommand` regenerates it on deploy; a local
+      `npm run build` is only for the offline single-laptop demo's local fallback, see
+      `DEPLOYMENT.md`) — confirm the PR doesn't include a stray `frontend/dist/` file.
 - [ ] No new environment variable or secret is required that isn't already set on Railway
       (cross-check against `railway.json`'s `preDeployCommand`/`startCommand` expectations and
       `app/config.py`).
@@ -35,6 +38,10 @@ Railway auto-deploys on every push to `main`. Nothing here changes that; this is
 
 - [ ] Check `/healthz` returns `{"status": "ok"}` (round-trips the DB — catches a dead
       connection pool or a sleeping free-tier host, not just "the process is running").
+- [ ] If `frontend/` changed: confirm the Vercel deployment actually went `Ready`
+      (`npx vercel ls` from `frontend/`, or the Vercel dashboard) — it's a separate deploy from
+      Railway's and can fail independently (e.g. a build error) without Railway showing anything
+      wrong at all.
 - [ ] Spot-check the actual feature that changed, not just the health check.
 - [ ] **Tag the release**: `git tag vX.Y.Z && git push origin vX.Y.Z`. This is pure
       record-keeping — `.github/workflows/release.yml` drafts a GitHub Release with
