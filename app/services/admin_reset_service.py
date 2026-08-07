@@ -3,6 +3,7 @@ from ..models import (
     ClearanceStamp,
     CodeSubmission,
     EventLog,
+    FinalFlagConfirmation,
     Fragment,
     LeaderboardSnapshot,
     Team,
@@ -33,6 +34,14 @@ class AdminResetService:
         TeamMission.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         Fragment.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         ClearanceStamp.query.filter_by(team_id=team.id).delete(synchronize_session=False)
+        # A stale FinalFlagConfirmation must not survive a reset: /missions/final-flag looks up
+        # this row by team_id alone, and if it's already confirmed_at-set from before the reset,
+        # the team re-passing every mission and resubmitting the same fragments after a reset
+        # would silently hand back the flag with no new Game Master confirmation at all --
+        # defeating the entire point of that two-person gate. Confirmed live: this exact
+        # sequence (reset a team that had already gotten the flag, then let them re-earn it)
+        # reproduced the bypass before this line was added.
+        FinalFlagConfirmation.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         team.score = 0
         team.integrity = 100
         team.hints_used = 0
@@ -51,7 +60,15 @@ class AdminResetService:
         clearance_stamps/leaderboard_snapshots/members all cascade via Team's own
         relationship config (models.py) once db.session.delete(team) runs — only
         CodeSubmission and TeamKnowledgeAnswer need the same manual pre-delete as
-        reset_team, for the same reason."""
+        reset_team, for the same reason.
+
+        EventLog and FinalFlagConfirmation are real FKs on team_id too, but Team has no ORM
+        relationship declared for either (unlike the ones above), so they are NOT covered by
+        that cascade and need the same explicit pre-delete. This isn't a rare edge case: a team
+        accrues an EventLog row the moment it's created (team_created is itself logged with
+        team_id=team.id), so every delete of a team with any history at all previously failed
+        with a FOREIGN KEY constraint violation.
+        """
         team_mission_ids = [tm.id for tm in team.team_missions]
         if team_mission_ids:
             CodeSubmission.query.filter(
@@ -60,6 +77,8 @@ class AdminResetService:
             TeamKnowledgeAnswer.query.filter(
                 TeamKnowledgeAnswer.team_mission_id.in_(team_mission_ids)
             ).delete(synchronize_session=False)
+        EventLog.query.filter_by(team_id=team.id).delete(synchronize_session=False)
+        FinalFlagConfirmation.query.filter_by(team_id=team.id).delete(synchronize_session=False)
         db.session.delete(team)
         db.session.commit()
 

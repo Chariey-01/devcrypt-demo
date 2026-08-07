@@ -234,6 +234,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const el = document.getElementById("team-table");
+    // Every mod/* template shares page_id="mod" (so the socket + "mod" gate above applies to
+    // all of them), but only mod/dashboard.html actually has a #team-table element -- team
+    // detail, events, analytics, and event-settings don't. Without this guard, refresh() (which
+    // runs immediately and then every 2s via setInterval below) threw on every one of those
+    // pages, forever, the instant it ran.
+    if (!el) return;
     el.innerHTML = `
       <table class="data-table">
         <thead>

@@ -3,6 +3,7 @@ from app.models import (
     ClearanceStamp,
     CodeSubmission,
     EventLog,
+    FinalFlagConfirmation,
     Fragment,
     LeaderboardSnapshot,
     Mission,
@@ -90,6 +91,16 @@ def test_rename_team_rejects_duplicate(app, client):
 
 def test_delete_team_cascades_all_child_rows(app, client):
     team_id, mission_id = _setup(app)
+    with app.app_context():
+        # EventLog.team_id and FinalFlagConfirmation.team_id are real FKs, but unlike
+        # TeamMission/Fragment/ClearanceStamp/TeamMember, Team has no ORM relationship declared
+        # for either, so db.session.delete(team) does not cascade to them on its own. This is
+        # not a rare edge case: a team accrues an EventLog row the moment it's created (every
+        # real team_created call passes team_id=team.id) — so any real team hit
+        # `FOREIGN KEY constraint failed` here, 100% of the time, before this was fixed.
+        db.session.add(EventLog(actor_role="game_master", action="team_created", team_id=team_id))
+        db.session.add(FinalFlagConfirmation(team_id=team_id))
+        db.session.commit()
     _login_gm(client)
 
     res = client.delete(f"/mod/team/{team_id}")
@@ -102,12 +113,21 @@ def test_delete_team_cascades_all_child_rows(app, client):
         assert ClearanceStamp.query.filter_by(team_id=team_id).count() == 0
         assert TeamMember.query.filter_by(team_id=team_id).count() == 0
         assert CodeSubmission.query.count() == 0  # was tied to the deleted team's only TeamMission
+        assert EventLog.query.filter_by(team_id=team_id).count() == 0
+        assert FinalFlagConfirmation.query.filter_by(team_id=team_id).count() == 0
         # Mission itself (event content, not team progress) must survive.
         assert Mission.query.get(mission_id) is not None
 
 
 def test_reset_team_clears_progress_but_keeps_team_and_members(app, client):
     team_id, mission_id = _setup(app)
+    with app.app_context():
+        # A team that already got its final flag confirmed, then got reset (e.g. for a
+        # re-run/demo). Without clearing this row too, the team re-passing every mission and
+        # resubmitting the same fragments after the reset would silently get the flag back with
+        # no new Game Master confirmation at all -- the reset must not leave this gate open.
+        db.session.add(FinalFlagConfirmation(team_id=team_id, confirmed_by=None))
+        db.session.commit()
     _login_gm(client)
 
     res = client.post(f"/mod/team/{team_id}/reset")
@@ -124,6 +144,7 @@ def test_reset_team_clears_progress_but_keeps_team_and_members(app, client):
         assert Fragment.query.filter_by(team_id=team_id).count() == 0
         assert ClearanceStamp.query.filter_by(team_id=team_id).count() == 0
         assert CodeSubmission.query.count() == 0
+        assert FinalFlagConfirmation.query.filter_by(team_id=team_id).count() == 0
         # Team identity and roster survive a progress reset.
         assert TeamMember.query.filter_by(team_id=team_id).count() == 1
         assert Mission.query.get(mission_id) is not None

@@ -63,7 +63,16 @@ def issue_stamp():
         team_id=team.id, officer_id=current_user.id, checkpoint_id=checkpoint_id, notes=notes
     )
     db.session.add(stamp)
-    audit_service.log(current_user, "security_officer", "clearance_stamp", "team", team.id)
+    # team_id=team.id (not just target_type/target_id) so this entry actually shows up on the
+    # GM's per-team audit view (mod.team_detail): that view's fallback match for pre-team_id
+    # legacy rows only matches target_type="team" when a team has zero team_missions -- once a
+    # team has started any mission it falls through to a target_type="team_mission" match
+    # instead, which a clearance_stamp row (target_type="team") never satisfies. Without
+    # team_id set directly, this stamp was invisible on that page for every actively-playing
+    # team, the exact case a Security Officer needs it visible for.
+    audit_service.log(
+        current_user, "security_officer", "clearance_stamp", "team", team.id, team_id=team.id
+    )
     db.session.commit()
     notify_mod("clearance_stamp", team.event_id or event_service.get_active_event().id)
 

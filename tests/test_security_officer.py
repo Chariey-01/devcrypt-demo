@@ -32,6 +32,12 @@ def test_issuing_a_clearance_stamp_never_changes_score(client, app):
         logged = EventLog.query.filter_by(action="clearance_stamp").first()
         assert logged is not None
         assert logged.actor_role == "security_officer"
+        # team_id must be set directly (not just target_type/target_id) -- mod.team_detail's
+        # audit view falls back to a target_type="team_mission" match for any team with at
+        # least one team_mission, which a target_type="team" row (this one) never satisfies.
+        # Without team_id, a clearance stamp was invisible on that page for every actively
+        # playing team.
+        assert logged.team_id == team_id
 
 
 def test_cannot_stamp_the_same_checkpoint_twice(client, app):
