@@ -12,7 +12,7 @@ const PAGE = document.body.dataset.page;
 // it: a socket event just triggers that page's existing refresh() immediately instead of waiting
 // up to 2s for the next tick. If the socket never connects or drops mid-session, the poll loop
 // keeps everything eventually-consistent regardless.
-const socket = ["player", "mod", "leaderboard"].includes(PAGE) ? io() : null;
+const socket = ["mod", "leaderboard"].includes(PAGE) ? io() : null;
 
 // Tracks consecutive fetch()-level failures (server unreachable, dropped connection, a Railway
 // restart) across every page's poll loop, independent of any one page's own state — api() below
@@ -55,10 +55,10 @@ async function api(url, options = {}) {
     data = {};
   }
   // A dead/expired team session (deleted team, or the cookie simply outlived the event) — mod
-  // and agent pages already get an HTML redirect for free from Flask-Login's own handling, so
-  // this only needs to cover the player/leaderboard poll loops, which would otherwise sit on a
-  // silently-frozen screen forever.
-  if (res.status === 401 && (PAGE === "player" || PAGE === "leaderboard")) {
+  // and agent pages already get an HTML redirect for free from Flask-Login's own handling. The
+  // player dashboard is a standalone React app on Vercel now (frontend/src/api.ts has its own
+  // copy of this same redirect); only the leaderboard's poll loop still needs it here.
+  if (res.status === 401 && PAGE === "leaderboard") {
     window.location.href = "/auth/team-login";
   }
   return { ok: res.ok, status: res.status, data };
