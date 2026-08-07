@@ -82,7 +82,15 @@ class Config:
     WTF_CSRF_TIME_LIMIT = None
 
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = "Lax"
+    # The React player dashboard is hosted cross-origin on Vercel, so the session cookie set by
+    # Flask's own (same-origin) login must still be sendable on the fetch() calls it makes back
+    # to this API -- SameSite=Lax blocks that for anything but a top-level navigation. Only
+    # needed in production (where the cross-origin split actually exists); local dev stays
+    # same-origin (Flask + a local Vite dev server) and keeps the stricter Lax default. Same
+    # SQLite-vs-Postgres signal already used by engine_options_for()/SESSION_COOKIE_SECURE below
+    # -- SameSite=None is silently ignored by browsers without Secure=True anyway, so this can
+    # never end up None over plain HTTP.
+    SESSION_COOKIE_SAMESITE = "Lax" if SQLALCHEMY_DATABASE_URI.startswith("sqlite") else "None"
     # Secure cookies are only sent over HTTPS. The local demo path (SQLite, per DEPLOYMENT.md)
     # deliberately runs over plain HTTP on the venue LAN with no TLS — forcing Secure there would
     # silently break every team/staff login. Production (Postgres, per DEPLOYMENT.md's Railway/
@@ -91,11 +99,29 @@ class Config:
     # by engine_options_for() above, not a new env var.
     SESSION_COOKIE_SECURE = not SQLALCHEMY_DATABASE_URI.startswith("sqlite")
 
+    # Single source of truth for every cross-origin trust decision this app makes: Socket.IO's
+    # CORS (below), the REST CORS applied to the player-facing blueprints (app/__init__.py), and
+    # nothing else -- GM/Agent/Security/mod stay server-rendered, same-origin, and never consult
+    # this. Comma-separated so local Vite dev (http://localhost:5173) and the production Vercel
+    # domain can both be trusted at once without two separate env vars. Unset falls back to "*"
+    # (local demo, LAN IP varies per laptop); set ALLOWED_ORIGIN to the real Vercel URL(s) for
+    # production, e.g. "https://devcrypt.vercel.app".
+    _allowed_origin_env = os.getenv("ALLOWED_ORIGIN", "*")
+    ALLOWED_ORIGINS = (
+        "*"
+        if _allowed_origin_env == "*"
+        else [origin.strip() for origin in _allowed_origin_env.split(",") if origin.strip()]
+    )
+
     # Socket.IO's handshake carries the session cookie like any other request, so an overly
     # permissive CORS setting here would let a third-party site open a session-authenticated
     # WebSocket connection on a logged-in visitor's behalf. Low actual impact today (every
     # push payload is a stateless {"type": "..."} ping, never a score/flag/fragment — see
-    # app/sockets.py), but tightened anyway as defense in depth. Unset (local demo, LAN IP
-    # varies per laptop) falls back to "*"; set ALLOWED_ORIGIN to the real deployed URL
-    # (e.g. https://devcrypt.up.railway.app) for production.
-    SOCKETIO_CORS_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGIN", "*")
+    # app/sockets.py), but tightened anyway as defense in depth.
+    SOCKETIO_CORS_ALLOWED_ORIGINS = ALLOWED_ORIGINS
+
+    # Where an authenticated team lands after /missions/play -- the standalone Vite/React app,
+    # no longer served by Flask itself. Defaults to Vite's own local dev server port so local
+    # development keeps working without an env var; must be set to the real Vercel production
+    # URL in production.
+    VERCEL_APP_URL = os.getenv("VERCEL_APP_URL", "http://localhost:5173")

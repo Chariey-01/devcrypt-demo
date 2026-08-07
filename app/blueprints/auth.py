@@ -3,6 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
+from flask_wtf.csrf import generate_csrf
 
 from ..extensions import db, limiter
 from ..models import User
@@ -24,6 +25,16 @@ STAFF_DESTINATIONS = {
 @auth_bp.route("/health")
 def health():
     return {"status": "ok"}
+
+
+@auth_bp.route("/csrf-token")
+def csrf_token():
+    # Every other page gets its CSRF token from the <meta name="csrf-token"> tag base.html
+    # renders server-side. The Vercel-hosted React app has no Flask-rendered HTML at all to put
+    # that tag in -- it fetches this instead, once, on load (after the team has already logged
+    # in here and picked up a session cookie, so a valid session already exists for Flask-WTF to
+    # bind the token to). This is Flask-WTF's own documented pattern for exactly this case.
+    return {"csrfToken": generate_csrf()}
 
 
 @auth_bp.route("/team-login", methods=["GET", "POST"])

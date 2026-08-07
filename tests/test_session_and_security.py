@@ -10,7 +10,14 @@ from tests.conftest import TestConfig
 
 
 def _login_team(client, name="Alpha", key="ALPHA01"):
-    return client.post("/auth/team-login", data={"name": name, "key": key})
+    # base_url="https://..." so this helper works unchanged whether or not the app under test
+    # has force_https active (the cross-origin-config tests below do, via
+    # SESSION_COOKIE_SECURE=True) -- the Werkzeug test client otherwise defaults to plain
+    # http://localhost, which Talisman would 302-redirect before the view (and the login) ever
+    # runs. Harmless for the default TestConfig too, where force_https is off regardless.
+    return client.post(
+        "/auth/team-login", data={"name": name, "key": key}, base_url="https://localhost"
+    )
 
 
 def test_team_session_survives_a_simulated_browser_restart(client, app):
@@ -138,3 +145,85 @@ def test_unexempted_routes_still_redirect_to_https_when_enforced():
     res = client.get("/")
     assert res.status_code == 302
     assert res.headers["Location"].startswith("https://")
+
+
+def test_csrf_token_endpoint_returns_a_usable_token():
+    # The Vercel-hosted player dashboard has no Flask-rendered <meta name="csrf-token"> tag to
+    # read (that only exists on server-rendered pages) -- it fetches this instead. Proves the
+    # token this JSON endpoint issues is interchangeable with the one a rendered page's hidden
+    # input carries, since both come from the same session-bound generate_csrf()/csrf_token().
+    app = _csrf_enabled_app()
+    client = app.test_client()
+    token = client.get("/auth/csrf-token").get_json()["csrfToken"]
+    assert token
+
+    res = client.post(
+        "/auth/team-login", data={"name": "Alpha", "key": "ALPHA01", "csrf_token": token}
+    )
+    assert res.status_code == 302
+
+
+def _cross_origin_app():
+    class CrossOriginConfig(TestConfig):
+        # Explicit overrides, not a re-derivation of app/config.py's conditionals -- same
+        # class-body-evaluation-time limitation SESSION_COOKIE_SECURE already works around above.
+        SESSION_COOKIE_SECURE = True
+        SESSION_COOKIE_SAMESITE = "None"
+        ALLOWED_ORIGINS = ["https://devcrypt-player.example.vercel.app"]
+
+    app = create_app(CrossOriginConfig)
+    with app.app_context():
+        db.create_all()
+        team = Team(name="Alpha", score=0, integrity=100)
+        team.set_key("ALPHA01")
+        db.session.add(team)
+        db.session.commit()
+    return app
+
+
+def test_session_cookie_is_samesite_none_under_the_cross_origin_config():
+    # Regression test for the Vercel split: without SameSite=None, a cross-origin fetch() from
+    # the Vercel-hosted dashboard would never receive the session cookie Flask's own login sets,
+    # breaking every authenticated request the React app makes back to this API.
+    app = _cross_origin_app()
+    client = app.test_client()
+    res = _login_team(client)
+    assert "SameSite=None" in res.headers.get("Set-Cookie", "")
+
+
+def test_session_cookie_is_samesite_lax_under_the_default_test_config(client, app):
+    with app.app_context():
+        team = Team(name="Alpha", score=0, integrity=100)
+        team.set_key("ALPHA01")
+        db.session.add(team)
+        db.session.commit()
+    res = _login_team(client)
+    assert "SameSite=Lax" in res.headers.get("Set-Cookie", "")
+
+
+def test_cors_allows_the_configured_origin_on_missions_routes():
+    app = _cross_origin_app()
+    client = app.test_client()
+    _login_team(client)
+    origin = "https://devcrypt-player.example.vercel.app"
+    res = client.get("/missions/status", headers={"Origin": origin})
+    assert res.headers.get("Access-Control-Allow-Origin") == origin
+    assert res.headers.get("Access-Control-Allow-Credentials") == "true"
+
+
+def test_cors_rejects_an_unlisted_origin_on_missions_routes():
+    app = _cross_origin_app()
+    client = app.test_client()
+    _login_team(client)
+    res = client.get("/missions/status", headers={"Origin": "https://evil.example.com"})
+    assert res.headers.get("Access-Control-Allow-Origin") != "https://evil.example.com"
+
+
+def test_cors_is_not_applied_to_gm_dashboard_routes():
+    # Proves the CORS scope is deliberately narrow (missions + the csrf-token route only), not
+    # sitewide -- GM/Agent/Security/mod stay server-rendered, same-origin, no new attack surface.
+    app = _cross_origin_app()
+    client = app.test_client()
+    origin = "https://devcrypt-player.example.vercel.app"
+    res = client.get("/mod/", headers={"Origin": origin})
+    assert "Access-Control-Allow-Origin" not in res.headers

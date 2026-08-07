@@ -19,6 +19,7 @@ import logging
 import os
 
 from flask import Flask, render_template
+from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import sockets  # noqa: F401 — registers the @socketio.on("connect") handler
@@ -92,6 +93,11 @@ def create_app(config_class=Config):
         # break every team/staff login there.
         force_https=app.config["SESSION_COOKIE_SECURE"],
         session_cookie_secure=app.config["SESSION_COOKIE_SECURE"],
+        # Talisman defaults this to "Lax" and applies it by overwriting
+        # app.config["SESSION_COOKIE_SAMESITE"] unconditionally at init time -- without this
+        # explicit pass-through, it silently clobbers the SameSite=None the Vercel split needs
+        # in production, regardless of what Config computed.
+        session_cookie_samesite=app.config["SESSION_COOKIE_SAMESITE"],
         content_security_policy={
             "default-src": "'self'",
             "script-src": "'self'",
@@ -101,9 +107,27 @@ def create_app(config_class=Config):
             "style-src": ["'self'", "'unsafe-inline'"],
             "img-src": ["'self'", "data:"],  # data: URIs used by generate_credential's QR PNG
             "connect-src": "'self'",
-            # data: URIs used by Monaco's bundled codicon icon font (app/static/dist/style.css,
-            # Phase 2's React player dashboard) alongside the existing self-hosted webfonts.
-            "font-src": ["'self'", "data:"],
+        },
+    )
+
+    # Only the player-facing JSON API needs to answer a cross-origin browser: the React
+    # dashboard is now a standalone app on Vercel (see frontend/), calling back to this API
+    # with credentials included. Every other blueprint (GM/Agent/Security/mod) stays
+    # server-rendered and same-origin, so it's deliberately not in this resources map at all --
+    # narrower than a sitewide CORS() call, and correctly re-reads app.config on every
+    # create_app() call (including TestConfig in tests), unlike binding CORS to a blueprint
+    # object at import time would.
+    CORS(
+        app,
+        resources={
+            r"/missions/*": {
+                "origins": app.config["ALLOWED_ORIGINS"],
+                "supports_credentials": True,
+            },
+            r"/auth/csrf-token": {
+                "origins": app.config["ALLOWED_ORIGINS"],
+                "supports_credentials": True,
+            },
         },
     )
 

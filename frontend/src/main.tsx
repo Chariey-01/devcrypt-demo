@@ -5,7 +5,7 @@ import App from "./App";
 
 const container = document.getElementById("player-root");
 if (!container) {
-  throw new Error("#player-root not found -- app/templates/player/dashboard.html must include it.");
+  throw new Error("#player-root not found -- frontend/index.html must include it.");
 }
 
 createRoot(container).render(

@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, Response, abort, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, abort, current_app, jsonify, redirect, request
 
 from ..decorators import current_team, team_required
 from ..extensions import db
@@ -55,7 +55,11 @@ NARRATIVE = {
 @missions_bp.route("/play")
 @team_required
 def play():
-    return render_template("player/dashboard.html")
+    # The player dashboard is a standalone React app on Vercel now (frontend/), not rendered by
+    # Flask -- this route stays the one place that knows where "play" actually lives, so
+    # auth.team_login()'s redirect (and anything else that does url_for("missions.play")) never
+    # needs to know the Vercel URL directly, only this route does.
+    return redirect(current_app.config["VERCEL_APP_URL"])
 
 
 def _available_hint_texts(challenge):

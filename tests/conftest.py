@@ -39,6 +39,13 @@ class TestConfig(Config):
     # and Talisman's force_https (app/__init__.py) is keyed off exactly this flag, which was
     # 302-redirecting every plain-http test-client request before this line was added.
     SESSION_COOKIE_SECURE = False
+    # Same class-body-evaluation-time gotcha as SESSION_COOKIE_SECURE above, for the same
+    # reason: Config.SESSION_COOKIE_SAMESITE is computed once from *Config's own*
+    # SQLALCHEMY_DATABASE_URI, not TestConfig's overridden one. Without this, a developer with a
+    # real Postgres DATABASE_URL in their local .env would inherit SameSite=None here, which
+    # Werkzeug's test client (plain http) silently drops -- session cookies would stop being
+    # sent between requests in the same test, breaking anything that logs in and then acts.
+    SESSION_COOKIE_SAMESITE = "Lax"
 
 
 @pytest.fixture

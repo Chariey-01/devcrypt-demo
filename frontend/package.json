@@ -7,8 +7,9 @@
     "node": ">=20 <21"
   },
   "scripts": {
-    "dev": "vite build --watch --mode development",
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run"
